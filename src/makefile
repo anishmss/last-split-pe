@@ -1,6 +1,6 @@
 CXX = g++
 CXXFLAGS = -O3 -Wall -Wextra -Wcast-qual -Wswitch-enum -Wundef	\
--Wcast-align -pedantic -g -std=c++11 -pthread -DHAS_CXX_THREADS
+-Wcast-align -pedantic -g -std=c++11 -pthread -DHAS_CXX_THREADS -Wno-sign-compare
 ALL = last-split-pe last-pair-probs
 PPOBJ = last-pair-probs.o last-pair-probs-main.o io.o
 SPOBJ = last-split-pe.o last-split-pe-main.o io.o

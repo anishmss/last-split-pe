@@ -1,4 +1,6 @@
 // Copyright 2017 Naruki Yoshikawa
+// Copyright 2014 Toshiyuki Sato
+// Copyright 2014 Martin C. Frith
 
 // Parse the command line and run last-pair-probs.
 
@@ -27,9 +29,12 @@ static void run(int argc, char* argv[]) {
   std::string help = "\
 Usage:\n\
   " + std::string(argv[0]) + " --help\n\
+  " + std::string(argv[0]) + " [options] split alignment\n\
 \n\
 Options:\n\
   -h, --help            show this help message and exit\n\
+  -f BP, --fraglen=BP   mean distance in bp\n\
+  -s BP, --sdev=BP      standard deviation of distance\n\
   -V, --version         show program's version number and exit\n\
 ";
 
@@ -37,6 +42,8 @@ Options:\n\
 
   static struct option lOpts[] = {
     { "help",     no_argument,       0, 'h' },
+    { "fraglen",  required_argument, 0, 'f' },
+    { "sdev",     required_argument, 0, 's' },
     { "version",  no_argument,       0, 'V' },
     { 0, 0, 0, 0}
   };
@@ -47,12 +54,33 @@ Options:\n\
     case 'h':
       std::cout << help;
       return;
+    case 'f':
+      opts.isFraglen = true;
+      cbrc::unstringify(opts.fraglen, optarg);
+      break;
+    case 's':
+      opts.isSdev = true;
+      cbrc::unstringify(opts.sdev, optarg);
+      if (opts.sdev < 0.0) {
+        throw std::runtime_error("option -s: should be >= 0");
+      }
+      break;
     case 'V':
       std::cout << version;
       return;
     case '?':
       throw std::runtime_error("");
     }
+  }
+
+  if (optind == argc && (!opts.isFraglen || !opts.isSdev)) {
+    std::cerr << help;
+    throw std::runtime_error("You must specify -f and -s");
+  }
+
+  opts.inputFileNames.assign(argv + optind, argv + argc);
+  if (opts.inputFileNames.size() > 2) {
+    throw std::runtime_error("too many file names");
   }
 
   std::ios_base::sync_with_stdio(false);  // makes std::cin much faster!!!
