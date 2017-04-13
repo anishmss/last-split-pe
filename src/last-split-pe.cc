@@ -163,9 +163,11 @@ std::vector<std::vector<double>> UpdateProbability(std::vector<Alignment>& X, st
     const double prob_disjoint = 0.1;
     size_t sizeX = X[0].qSrcSize;
     std::vector<std::vector<double>> p_Hij(sizeX, std::vector<double>(X.size(), 0.0));
+    std::vector<std::vector<long>> i_j(sizeX, std::vector<long>(X.size(), -1));
     for(size_t i=0; i<sizeX; ++i) {
         for(size_t j=0; j<X.size(); ++j) {
             if(i >= X[j].qStart && i < X[j].qStart+X[j].size) {
+                i_j[i][j] = X[j].rStart + i - X[j].qStart;
                 char c = X[j].prob[sizeX - X[j].qStart];
                 p_Hij[i][j] = pow(10.0, -((c - 33) / 10.0));
             }
@@ -192,13 +194,24 @@ std::vector<std::vector<double>> UpdateProbability(std::vector<Alignment>& X, st
         }
     }
     
-    for(size_t j=0; j<X.size(); ++j) {
-        for(size_t i=0; i<sizeX; ++i) {
-            char c = static_cast<char>(std::max(0.0, -log10(1.0-p_y_Hij[i][j])*10.0) + 33);
-            std::cout << c;
+    std::cout << X[0].qName;
+    for(size_t i=0; i<sizeX; ++i) {
+        std::cout << '\t';
+        double best_prob = 0.0;
+        int best_pair = -1;
+        for(size_t j=0; j<X.size(); ++j) {
+            if(p_y_Hij[i][j] > best_prob) {
+                best_prob = p_y_Hij[i][j];
+                best_pair = j;
+            }
         }
-        std::cout << std::endl;
+        if(i_j[i][best_pair] == -1) {
+            std::cout << "-";
+        } else {
+            std::cout << "(" << X[best_pair].rName << "," << i_j[i][best_pair] << "," << X[best_pair].qStrand << ")";
+        }
     }
+    std::cout << std::endl;
     return p_Hij_y;
 }
 
