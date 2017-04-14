@@ -1,0 +1,42 @@
+# LAST version 712
+#
+# a=7 b=1 A=7 B=1 e=18 d=10 x=17 y=9 z=17 D=1e+06 E=1.42857e+09
+# R=10 u=0 s=2 S=0 T=0 m=10 l=1 n=10 k=1 i=1 w=1000 t=0.910239 j=3 Q=0
+# db/refdb
+# Reference sequences=1 normal letters=350
+# lambda=1.09602 K=0.335388
+#
+#    A  C  G  T
+# A  1 -1 -1 -1
+# C -1  1 -1 -1
+# G -1 -1  1 -1
+# T -1 -1 -1  1
+#
+# Coordinates are 0-based.  For - strand matches, coordinates
+# in the reverse complement of the 2nd sequence are used.
+#
+# name start alnSize strand seqSize alignment
+#
+# m=1 s=18
+#
+a score=50 mismap=5.81e-09
+s ref 0 50 + 350 ACAGAGATCGAGAGAGCAGAGAGCTAGAGCAGAGGAACAGGGGAACCCCA
+s 1/1 0 50 + 100 ACAGAGATCGAGAGAGCAGAGAGCTAGAGCAGAGGAACAGGGGAACCCCA
+p                %*/48=BGKPUZ^chloqrssssssssssssrqolhc^ZUPKGB=84/*%
+
+a score=50 mismap=0.5
+s ref 100 50 + 350 GGAACCCAAATTATATATCCTATATAAGGGCTATATATAGGCCCGGGGAA
+s 1/1  50 50 + 100 GGAACCCAAATTATATATCCTATATAAGGGCTATATATAGGCCCGGGGAA
+p                  "####$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$####"
+
+a score=50 mismap=0.5
+s ref 300 50 + 350 GGAACCCAAATTATATATCCTATATAAGGGCTATATATAGGCCCGGGGAA
+s 1/1  50 50 + 100 GGAACCCAAATTATATATCCTATATAAGGGCTATATATAGGCCCGGGGAA
+p                  "####$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$####"
+
+# Query sequences=2
+a score=100 mismap=5.81e-09
+s ref 200 100 + 350 TTTTCTATATACGAGAGAGACTATAGCAAAAATCTAAGCCCCGAGAGAAACCTCTCCCATATATATCTCTGGGGGATATCGAGATAGAGCCCAAAGATAG
+s 1/2   0 100 + 100 TTTTCTATATACGAGAGAGACTATAGCAAAAATCTAAGCCCCGAGAGAAACCTCTCCCATATATATCTCTGGGGGATATCGAGATAGAGCCCAAAGATAG
+p                   %*/48=BGKPUZ^chloqrssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssrqolhc^ZUPKGB=84/*%
+
