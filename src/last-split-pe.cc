@@ -19,7 +19,9 @@
 #include <stdexcept>
 #include <limits.h>
 #include <cfloat>
-#include <stddef.h>  // size_t
+#include <cstddef>  // size_t
+
+#include <cstdio>
 
 typedef const char *String;
 
@@ -27,13 +29,18 @@ static void err(const std::string& s) {
   throw std::runtime_error(s);
 }
 
+static double logSumExp(const double a, const double b) {
+  // Adds numbers, in log space, to avoid overflow.
+  const double m = std::max(a, b);
+  return std::log(std::exp(a-m)+std::exp(b-m)) + m;
+}
+
 struct Alignment {
   double score;
   std::string qName, rName;
   long rStart, qStart, size, rSrcSize, qSrcSize;
   char rStrand, qStrand;
-  std::string qSeq, rSeq;
-  std::vector<double> prob;
+  std::string qSeq, rSeq, prob;
 };
 
 class AlignmentParameters {
@@ -146,10 +153,7 @@ static std::vector<Alignment> readAlignmentsSet(std::istream& input) {
                 aln.qStrand = qStrand;
                 aln.qSeq = qSeq;
                 aln.rSeq = rSeq;
-                aln.prob.resize(prob.size());
-                for(size_t i=0; i<aln.prob.size(); ++i) {
-                    aln.prob[i] = prob[i];
-                }
+                aln.prob = prob;
                 A.push_back(aln);
                 n = 0;
             }
@@ -159,60 +163,86 @@ static std::vector<Alignment> readAlignmentsSet(std::istream& input) {
 }
 
 
-std::vector<std::vector<double>> UpdateProbability(std::vector<Alignment>& X, std::vector<Alignment>& Y, AlignmentParameters& params) {
-    const double prob_disjoint = 0.1;
+void UpdateProbability(std::vector<Alignment>& X, std::vector<Alignment>& Y, AlignmentParameters& params, LastPairProbsOptions& opts) {
+    // p(I=1) i.e. probability of disjoint
+    const double prob_disjoint = 0.99;
+
     size_t sizeX = X[0].qSrcSize;
-    std::vector<std::vector<double>> p_Hij(sizeX, std::vector<double>(X.size(), 0.0));
-    std::vector<std::vector<long>> i_j(sizeX, std::vector<long>(X.size(), -1));
-    for(size_t i=0; i<sizeX; ++i) {
-        for(size_t j=0; j<X.size(); ++j) {
-            if(i >= X[j].qStart && i < X[j].qStart+X[j].size) {
-                i_j[i][j] = X[j].rStart + i - X[j].qStart;
-                char c = X[j].prob[sizeX - X[j].qStart];
-                p_Hij[i][j] = pow(10.0, -((c - 33) / 10.0));
-            }
-        }
-    }
-    std::vector<std::vector<double>> p_y_Hij(sizeX, std::vector<double>(X.size()));
-    for(size_t i=0; i<sizeX; ++i) {
-        for(size_t j=0; j<X.size(); ++j) {
-            for(size_t k=0; k<Y.size(); ++k) {
-                double inferredf = 0.1;     // TODO: infer f correctly
-                p_y_Hij[i][j] += inferredf * exp(Y[k].score/params.tGet()) * (1-prob_disjoint);
-               p_y_Hij[i][j] +=  exp(Y[k].score/params.tGet()) * prob_disjoint / 2.0 / params.gGet();
-            }
-        }
-    }
-    std::vector<std::vector<double>> p_Hij_y(sizeX, std::vector<double>(X.size()));
-    double Z = 0;
-    for(size_t i=0; i<sizeX; ++i) {
-        for(size_t l=0; l<Y.size(); ++l) {
-            Z += p_y_Hij[i][l] * p_Hij[i][l];
-        }
-        for(size_t j=0; j<Y.size(); ++j) {
-            p_Hij_y[i][j] = p_y_Hij[i][j] * p_Hij[i][j] / Z;
-        }
-    }
+    std::vector<long> i_j(X.size(), -1);
+    std::vector<double> log_p_Hj(X.size(), 0.0);
+    std::vector<double> log_p_y_Hj(X.size(), 0.0);
+    std::vector<double> p_Hj_y(X.size(), 0.0);
     
     std::cout << X[0].qName;
     for(size_t i=0; i<sizeX; ++i) {
+        std::fill(i_j.begin(), i_j.end(), -1);
+        std::fill(log_p_Hj.begin(), log_p_Hj.end(), -1.0e99);
+        std::fill(log_p_y_Hj.begin(), log_p_y_Hj.end(), -1.0e99);
+        std::fill(p_Hj_y.begin(), p_Hj_y.end(), 0.0);
+        for(size_t j=0; j<X.size(); ++j) {
+            // prior probability: p(H_j)
+            if(i >= X[j].qStart && i < X[j].qStart+X[j].size) {
+                i_j[j] = X[j].rStart + i - X[j].qStart;
+                char c = X[j].prob[i - X[j].qStart];
+                log_p_Hj[j] = std::log(1.0 - std::pow(10.0, -((c - 33) / 10.0)));
+            }
+            // conditional probability p(Y_k | H_j)
+            for(size_t k=0; k<Y.size(); ++k) {
+                // estimate flagment length (TODO: check again!)
+                int flag_len = -1;
+                if(X[j].qStrand=='+' && Y[k].qStrand=='-') {
+                    flag_len = (i - X[j].qStart - 1) + (Y[k].rStart - i_j[j] + 1) + Y[k].qSrcSize;
+                } else if(X[j].qStrand=='+' && Y[k].qStrand=='-') {
+                    flag_len = i_j[j] - Y[k].rStart + i_j[j] + X[j].qSrcSize - (i - X[j].qStart - 1);
+                }
+                // p(inferred |f|)
+                double log_pF = -1e99;
+                double pF = 0.0;
+                if(flag_len > 0) {
+                    pF = (1.0/opts.sdev/std::sqrt(2.0 * M_PI)) * std::exp(-pow(flag_len - opts.fraglen, 2.0)/2.0/pow(opts.sdev, 2.0));
+                    log_pF = std::log(pF);
+                }
+                // p(Y_k, I=0 | H_j)
+                log_p_y_Hj[j] = logSumExp(log_p_y_Hj[j], log_pF + Y[k].score/params.tGet() + std::log(1.0-prob_disjoint));
+                // p(Y_k, I=1 | H_j)
+                log_p_y_Hj[j] = logSumExp(log_p_y_Hj[j], -std::log(2.0*params.gGet()) + Y[k].score/params.tGet()/2.0 + std::log(prob_disjoint));
+            }
+        }
+        // denominator
+        double Z = -1.0e99;
+        for(size_t l=0; l<X.size(); ++l) {
+            if(i_j[l] != -1) {
+                Z = logSumExp(log_p_y_Hj[l] + log_p_Hj[l], Z);
+            }
+        }
+        for(size_t j=0; j<X.size(); ++j) {
+            p_Hj_y[j] = std::exp(log_p_y_Hj[j] + log_p_Hj[j] - Z);
+        }
+
+        /*printf("i = %d\n", i);
+        for(size_t r=0; r<X.size(); ++r) {
+            std::cout << "read" << r << ": " << std::endl;
+            std::cout << "i_j: " << i_j[r] << std::endl;
+            std::cout << "log(p_Hj): " << log_p_Hj[r] << std::endl;
+            std::cout << "log(p_y_Hj): " << log_p_y_Hj[r] << std::endl;
+            printf("p(H%d|y) = %f\n", r, p_Hj_y[r]);
+            }*/
         std::cout << '\t';
         double best_prob = 0.0;
         int best_pair = -1;
         for(size_t j=0; j<X.size(); ++j) {
-            if(p_y_Hij[i][j] > best_prob) {
-                best_prob = p_y_Hij[i][j];
+            if(p_Hj_y[j] > best_prob) {
+                best_prob = p_Hj_y[j];
                 best_pair = j;
             }
         }
-        if(i_j[i][best_pair] == -1) {
+        if(i_j[best_pair] == -1) {
             std::cout << "-";
         } else {
-            std::cout << "(" << X[best_pair].rName << "," << i_j[i][best_pair] << "," << X[best_pair].qStrand << ")";
+            std::cout << "(" << X[best_pair].rName << "," << i_j[best_pair] << "," << X[best_pair].qStrand << "," << p_Hj_y[best_pair] << ")";
         }
     }
     std::cout << std::endl;
-    return p_Hij_y;
 }
 
 void lastSplitPe(LastPairProbsOptions& opts) {
@@ -223,5 +253,5 @@ void lastSplitPe(LastPairProbsOptions& opts) {
     AlignmentParameters params = readHeaderOrDie(input);
     std::vector<Alignment> X = readAlignmentsSet(input);
     std::vector<Alignment> Y = readAlignmentsSet(input);
-    auto result = UpdateProbability(X, Y, params);
+    UpdateProbability(X, Y, params, opts);
 }
