@@ -8,22 +8,11 @@
 #include "stringify.hh"
 
 #include <algorithm>
-#include <cctype>  // isalpha
-#include <cerrno>
 #include <cmath>
-#include <cstdlib>  // atof
-#include <cstring>  // strncmp
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
-#include <limits.h>
-#include <cfloat>
-#include <cstddef>  // size_t
-
-#include <cstdio>
-
-typedef const char *String;
 
 static void err(const std::string& s) {
   throw std::runtime_error(s);
@@ -101,7 +90,7 @@ static AlignmentParameters readHeaderOrDie(std::istream& lines) {
   return params;  // dummy
 }
 
-static std::vector<Alignment> readAlignmentsSet(std::istream& input) {
+static std::vector<Alignment> readAlignmentSet(std::istream& input) {
     std::vector<Alignment> A;
     std::string line;
     while(true) {
@@ -163,9 +152,9 @@ static std::vector<Alignment> readAlignmentsSet(std::istream& input) {
 }
 
 
-void UpdateProbability(std::vector<Alignment>& X, std::vector<Alignment>& Y, AlignmentParameters& params, LastPairProbsOptions& opts) {
+void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, AlignmentParameters& params, LastPairProbsOptions& opts) {
     // p(I=1) i.e. probability of disjoint
-    const double prob_disjoint = 0.99;
+    const double prob_disjoint = 0.01;
 
     size_t sizeX = X[0].qSrcSize;
     std::vector<long> i_j(X.size(), -1);
@@ -179,12 +168,15 @@ void UpdateProbability(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
         std::fill(log_p_Hj.begin(), log_p_Hj.end(), -1.0e99);
         std::fill(log_p_y_Hj.begin(), log_p_y_Hj.end(), -1.0e99);
         std::fill(p_Hj_y.begin(), p_Hj_y.end(), 0.0);
+        double p_R = 0.0;
         for(size_t j=0; j<X.size(); ++j) {
             // prior probability: p(H_j)
             if(i >= X[j].qStart && i < X[j].qStart+X[j].size) {
                 i_j[j] = X[j].rStart + i - X[j].qStart;
                 char c = X[j].prob[i - X[j].qStart];
-                log_p_Hj[j] = std::log(1.0 - std::pow(10.0, -((c - 33) / 10.0)));
+                double p = 1.0 - std::pow(10.0, -((c - 33) / 10.0));
+                log_p_Hj[j] = std::log(p);
+                p_R += p;
             }
             // conditional probability p(Y_k | H_j)
             for(size_t k=0; k<Y.size(); ++k) {
@@ -215,18 +207,10 @@ void UpdateProbability(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
                 Z = logSumExp(log_p_y_Hj[l] + log_p_Hj[l], Z);
             }
         }
+
         for(size_t j=0; j<X.size(); ++j) {
             p_Hj_y[j] = std::exp(log_p_y_Hj[j] + log_p_Hj[j] - Z);
         }
-
-        /*printf("i = %d\n", i);
-        for(size_t r=0; r<X.size(); ++r) {
-            std::cout << "read" << r << ": " << std::endl;
-            std::cout << "i_j: " << i_j[r] << std::endl;
-            std::cout << "log(p_Hj): " << log_p_Hj[r] << std::endl;
-            std::cout << "log(p_y_Hj): " << log_p_y_Hj[r] << std::endl;
-            printf("p(H%d|y) = %f\n", r, p_Hj_y[r]);
-            }*/
         std::cout << '\t';
         double best_prob = 0.0;
         int best_pair = -1;
@@ -236,10 +220,10 @@ void UpdateProbability(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
                 best_pair = j;
             }
         }
-        if(i_j[best_pair] == -1) {
+        if(best_pair == -1 || i_j[best_pair] == -1) {
             std::cout << "-";
         } else {
-            std::cout << "(" << X[best_pair].rName << "," << i_j[best_pair] << "," << X[best_pair].qStrand << "," << p_Hj_y[best_pair] << ")";
+            std::cout << "(" << X[best_pair].rName << "," << i_j[best_pair] << "," << X[best_pair].qStrand << "," << p_R * p_Hj_y[best_pair] << ")";
         }
     }
     std::cout << std::endl;
@@ -251,7 +235,12 @@ void lastSplitPe(LastPairProbsOptions& opts) {
     std::ifstream inFile1;
     std::istream& input = (n > 0) ? cbrc::openIn(inputs[0], inFile1) : std::cin;
     AlignmentParameters params = readHeaderOrDie(input);
-    std::vector<Alignment> X = readAlignmentsSet(input);
-    std::vector<Alignment> Y = readAlignmentsSet(input);
-    UpdateProbability(X, Y, params, opts);
+    int time = 0;
+    while(input.good()) {
+        std::cout << "execution: " << ++time << std::endl;
+        std::vector<Alignment> X = readAlignmentSet(input);
+        std::vector<Alignment> Y = readAlignmentSet(input);
+        if(X.size() > 1) calcProbAndOutput(X, Y, params, opts);
+        if(Y.size() > 1) calcProbAndOutput(Y, X, params, opts);
+    }
 }
