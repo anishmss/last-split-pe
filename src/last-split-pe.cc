@@ -74,6 +74,15 @@ class AlignmentParameters {
   long   gGet() const { return g; }
 };
 
+class AlignmentPair {
+public:
+    std::string refName;
+    int refIndex;
+    char refStrand;
+    double probability;
+    char qBase;
+};
+
 static AlignmentParameters readHeaderOrDie(std::istream& lines) {
   std::string line;
   AlignmentParameters params;
@@ -162,7 +171,7 @@ void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
     std::vector<double> log_p_y_Hj(X.size(), 0.0);
     std::vector<double> p_Hj_y(X.size(), 0.0);
     
-    std::cout << X[0].qName;
+    std::vector<AlignmentPair> alnpair;
     for(size_t i=0; i<sizeX; ++i) {
         std::fill(i_j.begin(), i_j.end(), -1);
         std::fill(log_p_Hj.begin(), log_p_Hj.end(), -1.0e99);
@@ -211,7 +220,8 @@ void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
         for(size_t j=0; j<X.size(); ++j) {
             p_Hj_y[j] = std::exp(log_p_y_Hj[j] + log_p_Hj[j] - Z);
         }
-        std::cout << '\t';
+        // output
+        /*std::cout << '\t';
         double best_prob = 0.0;
         int best_pair = -1;
         for(size_t j=0; j<X.size(); ++j) {
@@ -224,9 +234,52 @@ void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
             std::cout << "-";
         } else {
             std::cout << "(" << X[best_pair].rName << "," << i_j[best_pair] << "," << X[best_pair].qStrand << "," << p_R * p_Hj_y[best_pair] << ")";
+        }*/
+        double best_prob = 0.0;
+        int best_pair = -1;
+        for(size_t j=0; j<X.size(); ++j) {
+            if(p_Hj_y[j] > best_prob) {
+                best_prob = p_Hj_y[j];
+                best_pair = j;
+            }
+        }
+        if(best_pair != -1 && i_j[best_pair] != -1) {
+            alnpair.push_back({X[best_pair].rName, i_j[best_pair], X[best_pair].qStrand, p_R * p_Hj_y[best_pair], X[best_pair].rSeq[i]});
         }
     }
-    std::cout << std::endl;
+    std::string seq;
+    int alnPos;
+    bool isContinuousAlignment = false;
+    for(size_t i=1; i<sizeX; ++i) {
+        if(alnpair[i-1].refName == alnpair[i].refName &&
+           alnpair[i-1].refIndex + 1 == alnpair[i].refIndex &&
+           alnpair[i-1].refStrand == alnpair[i].refStrand) {
+            if(!isContinuousAlignment) {
+                isContinuousAlignment = true;
+                alnPos = alnpair[i-1].refIndex;
+                seq += alnpair[i-1].qBase;
+                seq += alnpair[i].qBase;
+            } else {
+                seq += alnpair[i].qBase;
+            }
+        } else {
+            if(isContinuousAlignment) {
+                std::cout << X[0].qName << '\t'            // QNAME
+                          << '*' << '\t'                   // FLAG (temporary)
+                          << alnpair[i-1].refName << '\t'  // RNAME
+                          << alnPos << '\t'                // POS
+                          << 255 << '\t'                   // MAPQ (unavailable)
+                          << '*' << '\t'                   // CIGAR (temporary)
+                          << '*' << '\t'                   // RNEXT (unavailable)
+                          << 0 << '\t'                     // PNEXT (unavailable)
+                          << 0 << '\t'                     // TLEN (unavailable)
+                          << seq << '\t'                   // SEQ
+                          << '*' << std::endl;             // QUAL (unavailable)
+                seq = "";
+                isContinuousAlignment = false;
+            }
+        }
+    }
 }
 
 void lastSplitPe(LastPairProbsOptions& opts) {
