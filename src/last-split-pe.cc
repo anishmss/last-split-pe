@@ -245,7 +245,7 @@ void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
             }
         }
         if(best_pair != -1 && i_j[best_pair] != -1) {
-            alnpair.push_back({X[best_pair].rName, i_j[best_pair], X[best_pair].qStrand, p_R * p_Hj_y[best_pair], Y[0].rSeq[i], best_pair});
+            alnpair.push_back({X[best_pair].rName, i_j[best_pair], X[best_pair].qStrand, p_R * p_Hj_y[best_pair], X[best_pair].rSeq[i-X[best_pair].qStart], best_pair});
         }
     }
     std::string seq;
@@ -266,7 +266,7 @@ void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
         } else {
             if(isContinuousAlignment) {
                 std::cout << X[0].qName << '\t'            // QNAME
-                          << '*' << '\t'                   // FLAG (temporary)
+                          << seq.size() << 'M' << '\t'     // FLAG (temporary)
                           << alnpair[i-1].refName << '\t'  // RNAME
                           << alnPos << '\t'                // POS
                           << 255 << '\t'                   // MAPQ (unavailable)
