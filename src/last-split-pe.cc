@@ -77,10 +77,11 @@ class AlignmentParameters {
 class AlignmentPair {
 public:
     std::string refName;
-    int refIndex;
+    long refIndex;
     char refStrand;
     double probability;
     char qBase;
+    int best_pair;
 };
 
 static AlignmentParameters readHeaderOrDie(std::istream& lines) {
@@ -244,14 +245,14 @@ void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
             }
         }
         if(best_pair != -1 && i_j[best_pair] != -1) {
-            alnpair.push_back({X[best_pair].rName, i_j[best_pair], X[best_pair].qStrand, p_R * p_Hj_y[best_pair], X[best_pair].rSeq[i]});
+            alnpair.push_back({X[best_pair].rName, i_j[best_pair], X[best_pair].qStrand, p_R * p_Hj_y[best_pair], Y[0].rSeq[i], best_pair});
         }
     }
     std::string seq;
-    int alnPos;
+    int alnPos = -1;
     bool isContinuousAlignment = false;
-    for(size_t i=1; i<sizeX; ++i) {
-        if(alnpair[i-1].refName == alnpair[i].refName &&
+    for(size_t i=1; i<sizeX+1; ++i) {
+        if(i < sizeX && alnpair[i-1].refName == alnpair[i].refName &&
            alnpair[i-1].refIndex + 1 == alnpair[i].refIndex &&
            alnpair[i-1].refStrand == alnpair[i].refStrand) {
             if(!isContinuousAlignment) {
@@ -275,7 +276,8 @@ void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
                           << 0 << '\t'                     // TLEN (unavailable)
                           << seq << '\t'                   // SEQ
                           << '*' << std::endl;             // QUAL (unavailable)
-                seq = "";
+                std::cout << std::endl;
+                seq.clear();
                 isContinuousAlignment = false;
             }
         }
