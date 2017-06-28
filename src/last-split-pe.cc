@@ -2,7 +2,7 @@
 // Copyright 2014 Toshiyuki Sato
 // Copyright 2014 Martin C. Frith
 
-#include "last-pair-probs.hh"
+#include "last-split-pe.hh"
 
 #include "io.hh"
 #include "stringify.hh"
@@ -13,6 +13,7 @@
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <bitset>
 
 static void err(const std::string& s) {
   throw std::runtime_error(s);
@@ -190,7 +191,7 @@ void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
             }
             // conditional probability p(Y_k | H_j)
             for(size_t k=0; k<Y.size(); ++k) {
-                // estimate flagment length (TODO: check again!)
+                // estimate flagment length
                 int flag_len = -1;
                 if(X[j].qStrand=='+' && Y[k].qStrand=='-') {
                     flag_len = (i - X[j].qStart - 1) + (Y[k].rStart - i_j[j] + 1) + Y[k].qSrcSize;
@@ -222,20 +223,22 @@ void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
             p_Hj_y[j] = std::exp(log_p_y_Hj[j] + log_p_Hj[j] - Z);
         }
         // output
-        /*std::cout << '\t';
-        double best_prob = 0.0;
-        int best_pair = -1;
-        for(size_t j=0; j<X.size(); ++j) {
-            if(p_Hj_y[j] > best_prob) {
-                best_prob = p_Hj_y[j];
-                best_pair = j;
+        if(!opts.isSamFormat) {
+            std::cout << '\t';
+            double best_prob = 0.0;
+            int best_pair = -1;
+            for(size_t j=0; j<X.size(); ++j) {
+                if(p_Hj_y[j] > best_prob) {
+                    best_prob = p_Hj_y[j];
+                    best_pair = j;
+                }
+            }
+            if(best_pair == -1 || i_j[best_pair] == -1) {
+                std::cout << "-";
+            } else {
+                std::cout << "(" << X[best_pair].rName << "," << i_j[best_pair] << "," << X[best_pair].qStrand << "," << p_R * p_Hj_y[best_pair] << ")";
             }
         }
-        if(best_pair == -1 || i_j[best_pair] == -1) {
-            std::cout << "-";
-        } else {
-            std::cout << "(" << X[best_pair].rName << "," << i_j[best_pair] << "," << X[best_pair].qStrand << "," << p_R * p_Hj_y[best_pair] << ")";
-        }*/
         double best_prob = 0.0;
         int best_pair = -1;
         for(size_t j=0; j<X.size(); ++j) {
@@ -248,39 +251,57 @@ void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
             alnpair.push_back({X[best_pair].rName, i_j[best_pair], X[best_pair].qStrand, p_R * p_Hj_y[best_pair], X[best_pair].rSeq[i-X[best_pair].qStart], best_pair});
         }
     }
-    std::string seq;
-    int alnPos = -1;
-    bool isContinuousAlignment = false;
-    for(size_t i=1; i<sizeX+1; ++i) {
-        if(i < sizeX && alnpair[i-1].refName == alnpair[i].refName &&
-           alnpair[i-1].refIndex + 1 == alnpair[i].refIndex &&
-           alnpair[i-1].refStrand == alnpair[i].refStrand) {
-            if(!isContinuousAlignment) {
-                isContinuousAlignment = true;
-                alnPos = alnpair[i-1].refIndex;
-                seq += alnpair[i-1].qBase;
-                seq += alnpair[i].qBase;
+    if(opts.isSamFormat) {
+        std::string seq;
+        int alnPos = -1;
+        bool isContinuousAlignment = false;
+        for(size_t i=1; i<sizeX+1; ++i) {
+            if(i < sizeX && alnpair[i-1].refName == alnpair[i].refName &&
+               alnpair[i-1].refIndex + 1 == alnpair[i].refIndex &&
+               alnpair[i-1].refStrand == alnpair[i].refStrand) {
+                if(!isContinuousAlignment) {
+                    isContinuousAlignment = true;
+                    alnPos = alnpair[i-1].refIndex;
+                    seq += alnpair[i-1].qBase;
+                    seq += alnpair[i].qBase;
+                } else {
+                    seq += alnpair[i].qBase;
+                }
             } else {
-                seq += alnpair[i].qBase;
-            }
-        } else {
-            if(isContinuousAlignment) {
-                std::cout << X[0].qName << '\t'            // QNAME
-                          << seq.size() << 'M' << '\t'     // FLAG (temporary)
-                          << alnpair[i-1].refName << '\t'  // RNAME
-                          << alnPos << '\t'                // POS
-                          << 255 << '\t'                   // MAPQ (unavailable)
-                          << '*' << '\t'                   // CIGAR (temporary)
-                          << '*' << '\t'                   // RNEXT (unavailable)
-                          << 0 << '\t'                     // PNEXT (unavailable)
-                          << 0 << '\t'                     // TLEN (unavailable)
-                          << seq << '\t'                   // SEQ
-                          << '*' << std::endl;             // QUAL (unavailable)
-                std::cout << std::endl;
-                seq.clear();
-                isContinuousAlignment = false;
+                if(isContinuousAlignment) {
+                    std::bitset<12> flag;
+                    flag.set(0, true);    // template having multiple segments in sequencing
+                    flag.set(1, false);   // each segment properly aligned according to the aligner
+                    flag.set(2, false);   // segment unmapped
+                    flag.set(3, false);   // next segment in the template unmapped
+                    flag.set(4, false);   // SEQ being reverse complemented
+                    flag.set(5, false);   // SEQ of the next segment in the template being reverse complemented
+                    flag.set(6, true);    // the first segment in the template
+                    flag.set(7, false);   // the last segment in the template
+                    flag.set(8, false);   // secondary alignment
+                    flag.set(9, false);   // not passing filters, such as platform/vendor quality controls
+                    flag.set(10, false);   // PCR or optical duplicate
+                    flag.set(11, false);   // supplementary alignment
+
+                    std::cout << X[0].qName << '\t'            // QNAME
+                              << std::hex << flag.to_ulong() << '\t'                      // FLAG
+                              << alnpair[i-1].refName << '\t'  // RNAME
+                              << alnPos << '\t'                // RPOS
+                              << 255 << '\t'                   // MAPQ (unavailable)
+                              << seq.size() << 'M' << '\t'     // CIGAR
+                              << '*' << '\t'                   // RNEXT (unavailable)
+                              << 0 << '\t'                     // PNEXT (unavailable)
+                              << 0 << '\t'                     // TLEN (unavailable)
+                              << seq << '\t'                   // SEQ
+                              << '*' << std::endl;             // QUAL (unavailable)
+                    std::cout << std::endl;
+                    seq.clear();
+                    isContinuousAlignment = false;
+                }
             }
         }
+    } else {
+        std::cout << std::endl;
     }
 }
 
@@ -292,7 +313,6 @@ void lastSplitPe(LastPairProbsOptions& opts) {
     AlignmentParameters params = readHeaderOrDie(input);
     int time = 0;
     while(input.good()) {
-        std::cout << "execution: " << ++time << std::endl;
         std::vector<Alignment> X = readAlignmentSet(input);
         std::vector<Alignment> Y = readAlignmentSet(input);
         if(X.size() > 1) calcProbAndOutput(X, Y, params, opts);

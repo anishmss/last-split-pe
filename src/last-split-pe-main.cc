@@ -21,6 +21,7 @@ static void run(int argc, char* argv[]) {
   opts.isFraglen = false;
   opts.isSdev = false;
   opts.isDisjoint = false;
+  opts.isSamFormat = false;
 
   const char *version = "last-split-pe "
 #include "version.hh"
@@ -35,6 +36,7 @@ Options:\n\
   -h, --help            show this help message and exit\n\
   -f BP, --fraglen=BP   mean distance in bp\n\
   -s BP, --sdev=BP      standard deviation of distance\n\
+  --sam                 output format is SAM\n\
   -V, --version         show program's version number and exit\n\
 ";
 
@@ -45,6 +47,7 @@ Options:\n\
     { "fraglen",  required_argument, 0, 'f' },
     { "sdev",     required_argument, 0, 's' },
     { "version",  no_argument,       0, 'V' },
+    { "sam",      no_argument,       0, 'm' },
     { 0, 0, 0, 0}
   };
 
@@ -57,6 +60,9 @@ Options:\n\
     case 'f':
       opts.isFraglen = true;
       cbrc::unstringify(opts.fraglen, optarg);
+      break;
+    case 'm':
+      opts.isSamFormat = true;
       break;
     case 's':
       opts.isSdev = true;
