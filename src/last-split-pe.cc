@@ -173,6 +173,7 @@ void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
     std::vector<double> log_p_y_Hj(X.size(), 0.0);
     std::vector<double> p_Hj_y(X.size(), 0.0);
     
+    if(!opts.isSamFormat) std::cout << X[0].qName;
     std::vector<AlignmentPair> alnpair;
     for(size_t i=0; i<sizeX; ++i) {
         std::fill(i_j.begin(), i_j.end(), -1);
@@ -313,6 +314,7 @@ void lastSplitPe(LastPairProbsOptions& opts) {
     AlignmentParameters params = readHeaderOrDie(input);
     int time = 0;
     while(input.good()) {
+        std::cout << "execution: " << ++time << std::endl;
         std::vector<Alignment> X = readAlignmentSet(input);
         std::vector<Alignment> Y = readAlignmentSet(input);
         if(X.size() > 1) calcProbAndOutput(X, Y, params, opts);
