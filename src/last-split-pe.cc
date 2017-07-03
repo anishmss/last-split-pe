@@ -14,6 +14,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <bitset>
+#include <cassert>
 
 static void err(const std::string& s) {
   throw std::runtime_error(s);
@@ -99,6 +100,59 @@ static AlignmentParameters readHeaderOrDie(std::istream& lines) {
   }
   params.validate();  // die
   return params;  // dummy
+}
+
+static Alignment readSingleAlignment(std::istream& input) {
+    std::vector<Alignment> A;
+    std::string line;
+    int n = 0;
+    double score;
+    std::string str_score, rName, qName, rSeq, qSeq, prob;
+    char rStrand, qStrand;
+    long rStart, qStart, rSrcSize, qSrcSize, size = -1;
+    while (std::getline(input, line)) {
+        if(line == "") break;
+        char begin = line[0];
+        std::stringstream ss(line);
+        if(begin == 'a') {
+            if(line.substr(0, 8) !=  "a score=") {
+                std::cerr << "Bad File Format. Exit." << std::endl;
+                std::exit(EXIT_FAILURE);
+            }
+            ss.ignore(8);  // ignore "a score="
+            ss >> score;
+        } else if(begin == 's') {
+            char type;
+            if(n==0) {
+                ss >> type >> rName >> rStart >> size >> rStrand >> rSrcSize >> rSeq;
+                n = 1;
+            } else if(n==1) {
+                ss >> type >> qName >> qStart >> size >> qStrand >> qSrcSize >> qSeq;
+                n = 2;
+            } else {
+                err("Unavailable Input Format!");
+            }
+        } else if(begin == 'p') {
+            char type;
+            ss >> type >> prob;
+        }
+    }
+    Alignment aln;
+    aln.size = size;
+    aln.score = score;
+    aln.qName = qName;
+    aln.rName = rName;
+    aln.qStart = qStart;
+    aln.rStart = rStart;
+    aln.rSrcSize = rSrcSize;
+    aln.qSrcSize = qSrcSize;
+    aln.rStrand = rStrand;
+    aln.qStrand = qStrand;
+    aln.qSeq = qSeq;
+    aln.rSeq = rSeq;
+    aln.prob = prob;
+
+    return aln;
 }
 
 static std::vector<Alignment> readAlignmentSet(std::istream& input) {
@@ -285,7 +339,7 @@ void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
                     flag.set(11, false);   // supplementary alignment
 
                     std::cout << X[0].qName << '\t'            // QNAME
-                              << std::hex << flag.to_ulong() << '\t'                      // FLAG
+                              << std::hex << flag.to_ulong() << std::dec << '\t'                      // FLAG
                               << alnpair[i-1].refName << '\t'  // RNAME
                               << alnPos << '\t'                // RPOS
                               << 255 << '\t'                   // MAPQ (unavailable)
@@ -306,18 +360,81 @@ void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
     }
 }
 
+void outputAlignmentSam(const std::vector<Alignment>& X, bool isFirst) {
+    assert(X.size() == 1);
+    std::bitset<12> flag;
+    flag.set(0, true);    // template having multiple segments in sequencing
+    flag.set(1, false);   // each segment properly aligned according to the aligner
+    flag.set(2, false);   // segment unmapped
+    flag.set(3, false);   // next segment in the template unmapped
+    flag.set(4, X[0].qStrand=='-');   // SEQ being reverse complemented
+    flag.set(5, false);   // SEQ of the next segment in the template being reverse complemented
+    flag.set(6, isFirst);    // the first segment in the template
+    flag.set(7, !isFirst);   // the last segment in the template
+    flag.set(8, false);   // secondary alignment
+    flag.set(9, false);   // not passing filters, such as platform/vendor quality controls
+    flag.set(10, false);   // PCR or optical duplicate
+    flag.set(11, false);   // supplementary alignment
+
+    std::cout << X[0].qName << '\t'            // QNAME
+        << std::hex << flag.to_ulong() << std::dec << '\t'                      // FLAG
+        << X[0].qName << '\t'                 // RNAME
+        << X[0].qStart << '\t'                // RPOS
+        << 255 << '\t'                        // MAPQ (unavailable)
+        << X[0].qSeq.size() << 'M' << '\t'    // CIGAR
+        << '*' << '\t'                        // RNEXT (unavailable)
+        << 0 << '\t'                          // PNEXT (unavailable)
+        << 0 << '\t'                          // TLEN (unavailable)
+        << X[0].qSeq << '\t'                        // SEQ
+        << "*\n" << std::endl;                  // QUAL (unavailable)
+
+}
 void lastSplitPe(LastPairProbsOptions& opts) {
     const std::vector<std::string>& inputs = opts.inputFileNames;
     size_t n = inputs.size();
     std::ifstream inFile1;
     std::istream& input = (n > 0) ? cbrc::openIn(inputs[0], inFile1) : std::cin;
     AlignmentParameters params = readHeaderOrDie(input);
-    int time = 0;
-    while(input.good()) {
-        std::cout << "execution: " << ++time << std::endl;
-        std::vector<Alignment> X = readAlignmentSet(input);
-        std::vector<Alignment> Y = readAlignmentSet(input);
-        if(X.size() > 1) calcProbAndOutput(X, Y, params, opts);
-        if(Y.size() > 1) calcProbAndOutput(Y, X, params, opts);
+
+    int hoge = 0;
+
+    Alignment A = readSingleAlignment(input);
+    bool isEOF = false;
+    while(!isEOF) {
+        std::vector<Alignment> X = {A};
+        Alignment A2;
+        while(true) {
+            A2 = readSingleAlignment(input);
+            if(A2.size == -1) {
+                std::cerr << "Bad Input Format" << std::endl;
+                std::exit(EXIT_FAILURE);
+            }
+            if(A2.qName == A.qName) X.push_back(A2);
+            else break;
+        }
+        A = std::move(A2);
+        std::vector<Alignment> Y = {A};
+        while(true) {
+            A2 = readSingleAlignment(input);
+            if(A2.size == -1) {
+                isEOF = true;
+                break;
+            }
+            if(A2.qName == A.qName) X.push_back(A2);
+            else break;
+        }
+        A = std::move(A2);
+
+        if(X.size() == 1) {
+           if(opts.isSamFormat) outputAlignmentSam(X, true);
+        } else {
+            calcProbAndOutput(X, Y, params, opts);
+        }
+
+        if(Y.size() == 1) {
+           if(opts.isSamFormat) outputAlignmentSam(Y, false);
+        } else {
+            calcProbAndOutput(Y, X, params, opts);
+        }
     }
 }
