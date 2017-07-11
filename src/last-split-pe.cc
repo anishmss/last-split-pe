@@ -155,68 +155,6 @@ static Alignment readSingleAlignment(std::istream& input) {
     return aln;
 }
 
-static std::vector<Alignment> readAlignmentSet(std::istream& input) {
-    std::vector<Alignment> A;
-    std::string line;
-    while(true) {
-        int n = 0;
-        double score;
-        std::string str_score, rName, qName, rSeq, qSeq, prob;
-        char rStrand, qStrand;
-        long rStart, qStart, rSrcSize, qSrcSize, size;
-        char type;
-        bool initial = true;
-        while (std::getline(input, line)) {
-            std::string head = line.substr(0,1);
-            std::stringstream ss(line);
-            if(initial) {
-                if(head == "#") continue;
-                else initial = false;
-            }
-            if(head == "#") {
-                break;
-            } else if(head == "a") {
-                std::string str_score;
-                ss >> type >> str_score;
-                std::stringstream ss2(str_score);
-                ss2.ignore(6);
-                ss2 >> score;
-            } else if(head == "s") {
-                if(n==0) {
-                    ss >> type >> rName >> rStart >> size >> rStrand >> rSrcSize >> rSeq;
-                    n = 1;
-                } else if(n==1) {
-                    ss >> type >> qName >> qStart >> size >> qStrand >> qSrcSize >> qSeq;
-                    n = 2;
-                } else {
-                    err("bad Maf format!");
-                }
-            } else if(head == "p") {
-                ss >> type >> prob;
-                // std::cout << score << std::endl << rName << std::endl << qName << std::endl;
-                Alignment aln;
-                aln.size = size;
-                aln.score = score;
-                aln.qName = qName;
-                aln.rName = rName;
-                aln.qStart = qStart;
-                aln.rStart = rStart;
-                aln.rSrcSize = rSrcSize;
-                aln.qSrcSize = qSrcSize;
-                aln.rStrand = rStrand;
-                aln.qStrand = qStrand;
-                aln.qSeq = qSeq;
-                aln.rSeq = rSeq;
-                aln.prob = prob;
-                A.push_back(aln);
-                n = 0;
-            }
-        }
-        return A;
-    }
-}
-
-
 void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, AlignmentParameters& params, LastPairProbsOptions& opts) {
     // p(I=1) i.e. probability of disjoint
     const double prob_disjoint = 0.01;
@@ -326,11 +264,15 @@ void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
                 if(isContinuousAlignment) {
                     std::bitset<12> flag;
                     flag.set(0, true);    // template having multiple segments in sequencing
-                    flag.set(1, false);   // each segment properly aligned according to the aligner
+                    flag.set(1, true);    // each segment properly aligned according to the aligner
                     flag.set(2, false);   // segment unmapped
                     flag.set(3, false);   // next segment in the template unmapped
-                    flag.set(4, false);   // SEQ being reverse complemented
-                    flag.set(5, false);   // SEQ of the next segment in the template being reverse complemented
+
+                    flag.set(4, X[0].qStrand=='-'); // SEQ being reverse complemented
+                                                    // What if some strand is '+'??
+                    // SEQ of the next segment in the template being reverse complemented
+                    // TODO: What if there are several alignments in Y?
+                    flag.set(5, Y[0].qStrand=='-' ? true : false);   
                     flag.set(6, true);    // the first segment in the template
                     flag.set(7, false);   // the last segment in the template
                     flag.set(8, false);   // secondary alignment
@@ -338,8 +280,16 @@ void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
                     flag.set(10, false);   // PCR or optical duplicate
                     flag.set(11, false);   // supplementary alignment
 
-                    std::cout << X[0].qName << '\t'            // QNAME
-                              << std::hex << flag.to_ulong() << std::dec << '\t'                      // FLAG
+                    auto LastTwo = X[0].qName.substr(X[0].qName.length()-2);
+                    std::string qName;
+                    if(LastTwo == "/1" || LastTwo == "/2") {
+                        qName = X[0].qName.substr(0, X[0].qName.length()-2);
+                    } else {
+                        qName = X[0].qName;
+                    }
+
+                    std::cout << qName << '\t'         // QNAME
+                              << flag.to_ulong() << '\t'                      // FLAG
                               << alnpair[i-1].refName << '\t'  // RNAME
                               << alnPos << '\t'                // RPOS
                               << 255 << '\t'                   // MAPQ (unavailable)
@@ -360,33 +310,63 @@ void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
     }
 }
 
-void outputAlignmentSam(const std::vector<Alignment>& X, bool isFirst) {
+void outputAlignmentSam(const std::vector<Alignment>& X, const std::vector<Alignment>& Y,
+                        bool isFirst) {
     assert(X.size() == 1);
     std::bitset<12> flag;
-    flag.set(0, true);    // template having multiple segments in sequencing
-    flag.set(1, false);   // each segment properly aligned according to the aligner
-    flag.set(2, false);   // segment unmapped
-    flag.set(3, false);   // next segment in the template unmapped
-    flag.set(4, X[0].qStrand=='-');   // SEQ being reverse complemented
-    flag.set(5, false);   // SEQ of the next segment in the template being reverse complemented
-    flag.set(6, isFirst);    // the first segment in the template
-    flag.set(7, !isFirst);   // the last segment in the template
-    flag.set(8, false);   // secondary alignment
-    flag.set(9, false);   // not passing filters, such as platform/vendor quality controls
-    flag.set(10, false);   // PCR or optical duplicate
-    flag.set(11, false);   // supplementary alignment
+    // template having multiple segments in sequencing
+    flag.set(0, true);    
+    // each segment properly aligned according to the aligner
+    flag.set(1, false);   
+    // segment unmapped
+    flag.set(2, false);   
+    // next segment in the template unmapped
+    flag.set(3, false);   
+    // SEQ being reverse complemented
+    flag.set(4, X[0].qStrand=='-');   
+    // SEQ of the next segment in the template being reverse complemented
+    flag.set(5, Y[0].qStrand=='-' ? true : false);   
+    // the first segment in the template
+    flag.set(6, isFirst);    
+    // the last segment in the template
+    flag.set(7, !isFirst);   
+    // secondary alignment
+    flag.set(8, false);   
+    // not passing filters, such as platform/vendor quality controls
+    flag.set(9, false);   
+    // PCR or optical duplicate
+    flag.set(10, false);   
+    // supplementary alignment
+    flag.set(11, false);   
 
-    std::cout << X[0].qName << '\t'            // QNAME
-        << std::hex << flag.to_ulong() << std::dec << '\t'                      // FLAG
-        << X[0].qName << '\t'                 // RNAME
-        << X[0].qStart << '\t'                // RPOS
-        << 255 << '\t'                        // MAPQ (unavailable)
-        << X[0].qSeq.size() << 'M' << '\t'    // CIGAR
-        << '*' << '\t'                        // RNEXT (unavailable)
-        << 0 << '\t'                          // PNEXT (unavailable)
-        << 0 << '\t'                          // TLEN (unavailable)
-        << X[0].qSeq << '\t'                        // SEQ
-        << "*\n" << std::endl;                  // QUAL (unavailable)
+    for(size_t i=0; i<Y.size(); ++i) std::cout << Y[i].qName << " " << Y[i].qStrand << std::endl;
+
+    double prob = 0.0;
+    for(size_t i=0; i<X.size(); ++i) {
+        char c = X[0].prob[i];
+        prob = std::max(prob, 1.0 - std::pow(10.0, -((c - 33) / 10.0)));
+    }
+
+    auto LastTwo = X[0].qName.substr(X[0].qName.length()-2);
+    std::string qName;
+    /*if(LastTwo == "/1" || LastTwo == "/2") {
+        qName = X[0].qName.substr(0, X[0].qName.length()-2);
+    } else {
+        qName = X[0].qName;
+    }*/
+        qName = X[0].qName;
+
+    std::cout << qName << '\t'         // QNAME
+        << flag.to_ulong() << '\t'     // FLAG 
+        << X[0].rName << '\t'          // RNAME
+        << X[0].rStart + 1 << '\t'     // RPOS (since sam is 1-indexed, we need +1)
+        << -std::log10(prob) << '\t'   // MAPQ (TODO log of the probability of most reliable pair)
+        << X[0].qSeq.size() << 'M' << '\t'  // CIGAR
+        << '=' << '\t'                      // RNEXT (same, TODO: implement appropriately)
+        << Y[0].rStart + 1 << '\t'          // PNEXT (unavailable)
+        << 0 << '\t'                        // TLEN (unavailable)
+        << X[0].qSeq << '\t'                // SEQ
+        << "*" << std::endl;                // QUAL (unavailable)
 
 }
 void lastSplitPe(LastPairProbsOptions& opts) {
@@ -395,8 +375,6 @@ void lastSplitPe(LastPairProbsOptions& opts) {
     std::ifstream inFile1;
     std::istream& input = (n > 0) ? cbrc::openIn(inputs[0], inFile1) : std::cin;
     AlignmentParameters params = readHeaderOrDie(input);
-
-    int hoge = 0;
 
     Alignment A = readSingleAlignment(input);
     bool isEOF = false;
@@ -426,13 +404,13 @@ void lastSplitPe(LastPairProbsOptions& opts) {
         A = std::move(A2);
 
         if(X.size() == 1) {
-           if(opts.isSamFormat) outputAlignmentSam(X, true);
+           if(opts.isSamFormat) outputAlignmentSam(X, Y, true);
         } else {
             calcProbAndOutput(X, Y, params, opts);
         }
 
         if(Y.size() == 1) {
-           if(opts.isSamFormat) outputAlignmentSam(Y, false);
+           if(opts.isSamFormat) outputAlignmentSam(Y, X, false);
         } else {
             calcProbAndOutput(Y, X, params, opts);
         }
