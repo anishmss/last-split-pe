@@ -248,7 +248,7 @@ void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
         std::string seq;
         int alnPos = -1;
         bool isContinuousAlignment = false;
-        for(size_t i=1; i<sizeX+1; ++i) {
+        for(size_t i=1; i<alnpair.size(); ++i) {
             if(i < sizeX && alnpair[i-1].refName == alnpair[i].refName &&
                alnpair[i-1].refIndex + 1 == alnpair[i].refIndex &&
                alnpair[i-1].refStrand == alnpair[i].refStrand) {
@@ -264,7 +264,7 @@ void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
                 if(isContinuousAlignment) {
                     std::bitset<12> flag;
                     flag.set(0, true);    // template having multiple segments in sequencing
-                    flag.set(1, true);    // each segment properly aligned according to the aligner
+                    flag.set(1, false);    // each segment properly aligned according to the aligner
                     flag.set(2, false);   // segment unmapped
                     flag.set(3, false);   // next segment in the template unmapped
 
@@ -291,7 +291,7 @@ void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
                     std::cout << qName << '\t'         // QNAME
                               << flag.to_ulong() << '\t'                      // FLAG
                               << alnpair[i-1].refName << '\t'  // RNAME
-                              << alnPos << '\t'                // RPOS
+                              << alnPos + 1<< '\t'                // RPOS
                               << 255 << '\t'                   // MAPQ (unavailable)
                               << seq.size() << 'M' << '\t'     // CIGAR
                               << '*' << '\t'                   // RNEXT (unavailable)
@@ -339,8 +339,6 @@ void outputAlignmentSam(const std::vector<Alignment>& X, const std::vector<Align
     // supplementary alignment
     flag.set(11, false);   
 
-    for(size_t i=0; i<Y.size(); ++i) std::cout << Y[i].qName << " " << Y[i].qStrand << std::endl;
-
     double prob = 0.0;
     for(size_t i=0; i<X.size(); ++i) {
         char c = X[0].prob[i];
@@ -360,9 +358,8 @@ void outputAlignmentSam(const std::vector<Alignment>& X, const std::vector<Align
         << flag.to_ulong() << '\t'     // FLAG 
         << X[0].rName << '\t'          // RNAME
         << X[0].rStart + 1 << '\t'     // RPOS (since sam is 1-indexed, we need +1)
-        << -std::log10(prob) << '\t'   // MAPQ (TODO log of the probability of most reliable pair)
-        << X[0].qSeq.size() << 'M' << '\t'  // CIGAR
-        << '=' << '\t'                      // RNEXT (same, TODO: implement appropriately)
+        << static_cast<int>(-10 * std::log10(prob)) << '\t'   // MAPQ (TODO log of the probability of most reliable pair) 
+        << X[0].qSeq.size() << 'M' << '\t'  // CIGAR << '=' << '\t'                      // RNEXT (same, TODO: implement appropriately)
         << Y[0].rStart + 1 << '\t'          // PNEXT (unavailable)
         << 0 << '\t'                        // TLEN (unavailable)
         << X[0].qSeq << '\t'                // SEQ
