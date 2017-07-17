@@ -39,9 +39,12 @@ class AlignmentParameters {
   double t;  // score scale factor
   double e;  // minimum score
   long   g;  // genome size
+  long   a;  // gap open
+  long   b;  // gap extention
+  long   x;  // drop parameter
 
  public:
-  AlignmentParameters() : t(-1), e(-1), g(-1) {}  // dummy values
+  AlignmentParameters() : t(-1), e(-1), g(-1), a(-1), b(-1), x(-1) {}  // dummy values
 
   void update(const std::string& line) {
     std::istringstream ss(line);
@@ -60,6 +63,18 @@ class AlignmentParameters {
 	cbrc::unstringify(g, c + 8);
         if (g <= 0) err("letters must be positive");
       }
+      if (a == -1 && i.substr(0,2) == "a=") {
+	cbrc::unstringify(a, c + 2);
+        if (a <= 0) err("a must be positive");
+      }
+      if (b == -1 && i.substr(0,2) == "b=") {
+	cbrc::unstringify(b, c + 2);
+        if (b <= 0) err("b must be positive");
+      }
+      if (x == -1 && i.substr(0,2) == "x=") {
+	cbrc::unstringify(x, c + 2);
+        if (x <= 0) err("x must be positive");
+      }
     }
   }
 
@@ -74,6 +89,9 @@ class AlignmentParameters {
   double tGet() const { return t; }
   double eGet() const { return e; }
   long   gGet() const { return g; }
+  long   aGet() const { return a; }
+  long   bGet() const { return b; }
+  long   xGet() const { return x; }
 };
 
 class AlignmentPair {
@@ -155,6 +173,48 @@ static Alignment readSingleAlignment(std::istream& input) {
     return aln;
 }
 
+void outputInSAM(const std::vector<Alignment>& X, const std::vector<Alignment>& Y,
+        const std::string& refName, const long alnPos, const size_t totalLength,
+        const std::string& seq, std::stringstream& cigar, bool isSupplementary) {
+    // output in SAM format
+    std::bitset<12> flag;
+    flag.set(0, true);    // template having multiple segments in sequencing
+    flag.set(1, false);    // each segment properly aligned according to the aligner
+    flag.set(2, false);   // segment unmapped
+    flag.set(3, false);   // next segment in the template unmapped
+
+    flag.set(4, X[0].qStrand=='-'); // SEQ being reverse complemented
+    // What if some strand is '+'??
+    // SEQ of the next segment in the template being reverse complemented
+    // TODO: What if there are several alignments in Y?
+    flag.set(5, Y[0].qStrand=='-' ? true : false);   
+    flag.set(6, true);    // the first segment in the template
+    flag.set(7, false);   // the last segment in the template
+    flag.set(8, false);   // secondary alignment
+    flag.set(9, false);   // not passing filters, such as platform/vendor quality controls
+    flag.set(10, false);   // PCR or optical duplicate
+    flag.set(11, isSupplementary);   // supplementary alignment
+
+    auto LastTwo = X[0].qName.substr(X[0].qName.length()-2);
+    std::string qName;
+    if(LastTwo == "/1" || LastTwo == "/2") {
+        qName = X[0].qName.substr(0, X[0].qName.length()-2);
+    } else {
+        qName = X[0].qName;
+    }
+    if(totalLength < X[0].qSrcSize) cigar << X[0].qSrcSize - totalLength  << "H";
+    std::cout << qName << '\t'                 // QNAME
+        << flag.to_ulong() << '\t'       // FLAG
+        << refName << '\t'  // RNAME
+        << alnPos + 1<< '\t'             // RPOS
+        << 255 << '\t'                   // MAPQ (unavailable)
+        << cigar.str() << '\t'           // CIGAR
+        << '*' << '\t'                   // RNEXT (unavailable)
+        << 0 << '\t'                     // PNEXT (unavailable)
+        << 0 << '\t'                     // TLEN (unavailable)
+        << seq << '\t'                   // SEQ
+        << '*' << std::endl;             // QUAL (unavailable)
+}
 void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, AlignmentParameters& params, LastPairProbsOptions& opts) {
     // p(I=1) i.e. probability of disjoint
     const double prob_disjoint = 0.01;
@@ -246,63 +306,81 @@ void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
     }
     if(opts.isSamFormat) {
         std::string seq;
-        int alnPos = -1;
-        bool isContinuousAlignment = false;
-        for(size_t i=1; i<alnpair.size(); ++i) {
-            if(i < sizeX && alnpair[i-1].refName == alnpair[i].refName &&
-               alnpair[i-1].refIndex + 1 == alnpair[i].refIndex &&
-               alnpair[i-1].refStrand == alnpair[i].refStrand) {
-                if(!isContinuousAlignment) {
-                    isContinuousAlignment = true;
-                    alnPos = alnpair[i-1].refIndex;
-                    seq += alnpair[i-1].qBase;
-                    seq += alnpair[i].qBase;
-                } else {
-                    seq += alnpair[i].qBase;
+        long a = params.aGet();
+        long b = params.bGet();
+        long x = params.xGet();
+        size_t idx = 1;
+        bool isSupplementary = false;
+        while(idx < alnpair.size()) {
+            bool isEndAlignment = false;
+            if(idx == alnpair.size()-1) isEndAlignment = true;
+            // if match, start one alignment
+            if(alnpair[idx-1].refName == alnpair[idx].refName &&
+               alnpair[idx-1].refIndex == alnpair[idx].refIndex - 1 &&
+               alnpair[idx-1].refStrand == alnpair[idx].refStrand) {
+                size_t totalLength = 0;
+                std::stringstream cigar;
+                if(idx > 1) {
+                    cigar << idx-1 << "H";
+                    totalLength += idx - 1;
+                }
+                // count match length
+                size_t matchLength = 2;
+                seq = "";
+                seq += alnpair[idx-1].qBase;
+                seq += alnpair[idx].qBase;
+                for(size_t i=idx+1; ; ++i) {
+                    if(alnpair[i-1].refName == alnpair[i].refName &&
+                       alnpair[i-1].refStrand == alnpair[i].refStrand) {
+                        auto refIndexDiff = alnpair[i].refIndex-alnpair[i-1].refIndex;
+                        if(refIndexDiff == 1) {
+                            matchLength++;
+                            seq += alnpair[i].qBase;
+                        } else {
+                            cigar << matchLength << "M";
+                            totalLength += matchLength;
+                            if(a + b*refIndexDiff < x) {
+                                matchLength = 0;
+                                cigar << refIndexDiff << "D";
+                                seq += alnpair[i].qBase;
+                            } else {
+                                isEndAlignment = true;
+                            }
+                        }
+                    } else {
+                        bool isInsertion = false;
+                        for(size_t j=i+1; a+b*(j-i)<x; ++j) {
+                            auto refIndexDiff = alnpair[i].refIndex-alnpair[i-1].refIndex;
+                            std::cout << alnpair[i-1].refName << " : " << alnpair[j].refName << std::endl;
+                            if(alnpair[j-1].refName == alnpair[j].refName &&
+                               alnpair[j-1].refStrand == alnpair[j].refStrand &&
+                               refIndexDiff == 1) 
+                            {
+                                cigar << j-i << "D";
+                                totalLength += j-i;
+                                i = j;
+                                isInsertion = true;
+                                break;
+                            }
+                        }
+                        if(!isInsertion) {
+                            isEndAlignment = true;
+                        }
+                    }
+                    if(i == alnpair.size()-1) {
+                        isEndAlignment = true;
+                        cigar << matchLength << "M";
+                        totalLength += matchLength;
+                    }
+                    if(isEndAlignment) {
+                        outputInSAM(X, Y, alnpair[idx].refName, alnpair[idx-1].refIndex, totalLength, seq, cigar, isSupplementary);
+                        idx = i + 1;
+                        isSupplementary = true;
+                        break;
+                    }
                 }
             } else {
-                if(isContinuousAlignment) {
-                    std::bitset<12> flag;
-                    flag.set(0, true);    // template having multiple segments in sequencing
-                    flag.set(1, false);    // each segment properly aligned according to the aligner
-                    flag.set(2, false);   // segment unmapped
-                    flag.set(3, false);   // next segment in the template unmapped
-
-                    flag.set(4, X[0].qStrand=='-'); // SEQ being reverse complemented
-                                                    // What if some strand is '+'??
-                    // SEQ of the next segment in the template being reverse complemented
-                    // TODO: What if there are several alignments in Y?
-                    flag.set(5, Y[0].qStrand=='-' ? true : false);   
-                    flag.set(6, true);    // the first segment in the template
-                    flag.set(7, false);   // the last segment in the template
-                    flag.set(8, false);   // secondary alignment
-                    flag.set(9, false);   // not passing filters, such as platform/vendor quality controls
-                    flag.set(10, false);   // PCR or optical duplicate
-                    flag.set(11, false);   // supplementary alignment
-
-                    auto LastTwo = X[0].qName.substr(X[0].qName.length()-2);
-                    std::string qName;
-                    if(LastTwo == "/1" || LastTwo == "/2") {
-                        qName = X[0].qName.substr(0, X[0].qName.length()-2);
-                    } else {
-                        qName = X[0].qName;
-                    }
-
-                    std::cout << qName << '\t'         // QNAME
-                              << flag.to_ulong() << '\t'                      // FLAG
-                              << alnpair[i-1].refName << '\t'  // RNAME
-                              << alnPos + 1<< '\t'                // RPOS
-                              << 255 << '\t'                   // MAPQ (unavailable)
-                              << seq.size() << 'M' << '\t'     // CIGAR
-                              << '*' << '\t'                   // RNEXT (unavailable)
-                              << 0 << '\t'                     // PNEXT (unavailable)
-                              << 0 << '\t'                     // TLEN (unavailable)
-                              << seq << '\t'                   // SEQ
-                              << '*' << std::endl;             // QUAL (unavailable)
-                    std::cout << std::endl;
-                    seq.clear();
-                    isContinuousAlignment = false;
-                }
+                idx++;
             }
         }
     } else {
@@ -347,12 +425,11 @@ void outputAlignmentSam(const std::vector<Alignment>& X, const std::vector<Align
 
     auto LastTwo = X[0].qName.substr(X[0].qName.length()-2);
     std::string qName;
-    /*if(LastTwo == "/1" || LastTwo == "/2") {
+    if(LastTwo == "/1" || LastTwo == "/2") {
         qName = X[0].qName.substr(0, X[0].qName.length()-2);
     } else {
         qName = X[0].qName;
-    }*/
-        qName = X[0].qName;
+    }
 
     std::cout << qName << '\t'         // QNAME
         << flag.to_ulong() << '\t'     // FLAG 
