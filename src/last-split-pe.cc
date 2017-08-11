@@ -472,7 +472,7 @@ void lastSplitPe(LastPairProbsOptions& opts) {
                 isEOF = true;
                 break;
             }
-            if(A2.qName == A.qName) X.push_back(A2);
+            if(A2.qName == A.qName) Y.push_back(A2);
             else break;
         }
         A = std::move(A2);
