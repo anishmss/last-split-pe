@@ -175,7 +175,8 @@ static Alignment readSingleAlignment(std::istream& input) {
 
 void outputInSAM(const std::vector<Alignment>& X, const std::vector<Alignment>& Y,
         const std::string& refName, const long alnPos, const size_t totalLength,
-        const std::string& seq, std::stringstream& cigar, bool isSupplementary) {
+        const std::string& seq, std::stringstream& cigar, bool isSupplementary,
+        bool isFirst) {
     // output in SAM format
     std::bitset<12> flag;
     flag.set(0, true);    // template having multiple segments in sequencing
@@ -188,8 +189,8 @@ void outputInSAM(const std::vector<Alignment>& X, const std::vector<Alignment>& 
     // SEQ of the next segment in the template being reverse complemented
     // TODO: What if there are several alignments in Y?
     flag.set(5, Y[0].qStrand=='-' ? true : false);   
-    flag.set(6, true);    // the first segment in the template
-    flag.set(7, false);   // the last segment in the template
+    flag.set(6, isFirst);    // the first segment in the template
+    flag.set(7, !isFirst);   // the last segment in the template
     flag.set(8, false);   // secondary alignment
     flag.set(9, false);   // not passing filters, such as platform/vendor quality controls
     flag.set(10, false);   // PCR or optical duplicate
@@ -215,7 +216,8 @@ void outputInSAM(const std::vector<Alignment>& X, const std::vector<Alignment>& 
         << seq << '\t'                   // SEQ
         << '*' << std::endl;             // QUAL (unavailable)
 }
-void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, AlignmentParameters& params, LastPairProbsOptions& opts) {
+void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, AlignmentParameters& params, LastPairProbsOptions& opts, 
+                       bool isFirst) {
     // p(I=1) i.e. probability of disjoint
     const double prob_disjoint = 0.01;
 
@@ -373,7 +375,7 @@ void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
                         totalLength += matchLength;
                     }
                     if(isEndAlignment) {
-                        outputInSAM(X, Y, alnpair[idx].refName, alnpair[idx-1].refIndex, totalLength, seq, cigar, isSupplementary);
+                        outputInSAM(X, Y, alnpair[idx].refName, alnpair[idx-1].refIndex, totalLength, seq, cigar, isSupplementary, isFirst);
                         idx = i + 1;
                         isSupplementary = true;
                         break;
@@ -480,13 +482,13 @@ void lastSplitPe(LastPairProbsOptions& opts) {
         if(X.size() == 1) {
            if(opts.isSamFormat) outputAlignmentSam(X, Y, true);
         } else {
-            calcProbAndOutput(X, Y, params, opts);
+            calcProbAndOutput(X, Y, params, opts, true);
         }
 
         if(Y.size() == 1) {
            if(opts.isSamFormat) outputAlignmentSam(Y, X, false);
         } else {
-            calcProbAndOutput(Y, X, params, opts);
+            calcProbAndOutput(Y, X, params, opts, false);
         }
     }
 }
