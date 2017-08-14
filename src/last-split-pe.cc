@@ -204,9 +204,9 @@ void outputInSAM(const std::vector<Alignment>& X, const std::vector<Alignment>& 
         qName = X[0].qName;
     }
     if(totalLength < X[0].qSrcSize) cigar << X[0].qSrcSize - totalLength  << "H";
-    std::cout << qName << '\t'                 // QNAME
+    std::cout << qName << '\t'           // QNAME
         << flag.to_ulong() << '\t'       // FLAG
-        << refName << '\t'  // RNAME
+        << refName << '\t'               // RNAME
         << alnPos + 1<< '\t'             // RPOS
         << 255 << '\t'                   // MAPQ (unavailable)
         << cigar.str() << '\t'           // CIGAR
@@ -353,7 +353,6 @@ void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
                         bool isInsertion = false;
                         for(size_t j=i+1; a+b*(j-i)<x; ++j) {
                             auto refIndexDiff = alnpair[i].refIndex-alnpair[i-1].refIndex;
-                            std::cout << alnpair[i-1].refName << " : " << alnpair[j].refName << std::endl;
                             if(alnpair[j-1].refName == alnpair[j].refName &&
                                alnpair[j-1].refStrand == alnpair[j].refStrand &&
                                refIndexDiff == 1) 
@@ -438,7 +437,8 @@ void outputAlignmentSam(const std::vector<Alignment>& X, const std::vector<Align
         << X[0].rName << '\t'          // RNAME
         << X[0].rStart + 1 << '\t'     // RPOS (since sam is 1-indexed, we need +1)
         << static_cast<int>(-10 * std::log10(prob)) << '\t'   // MAPQ (TODO log of the probability of most reliable pair) 
-        << X[0].qSeq.size() << 'M' << '\t'  // CIGAR << '=' << '\t'                      // RNEXT (same, TODO: implement appropriately)
+        << X[0].qSeq.size() << 'M' << '\t'  // CIGAR 
+        << '=' << '\t'                      // RNEXT (same, TODO: implement appropriately)
         << Y[0].rStart + 1 << '\t'          // PNEXT (unavailable)
         << 0 << '\t'                        // TLEN (unavailable)
         << X[0].qSeq << '\t'                // SEQ
