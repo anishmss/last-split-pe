@@ -28,7 +28,7 @@ static double logSumExp(const double a, const double b) {
 
 struct Alignment {
   double score;
-  std::string qName, rName;
+  std::string qName, qNameNoPair, qPairName, rName;
   long rStart, qStart, size, rSrcSize, qSrcSize;
   char rStrand, qStrand;
   std::string qSeq, rSeq, prob;
@@ -125,7 +125,7 @@ static Alignment readSingleAlignment(std::istream& input) {
     std::string line;
     int n = 0;
     double score;
-    std::string str_score, rName, qName, rSeq, qSeq, prob;
+    std::string str_score, rName, qName, pairName, qNameNoPair, rSeq, qSeq, prob;
     char rStrand, qStrand;
     long rStart, qStart, rSrcSize, qSrcSize, size = -1;
     while (std::getline(input, line)) {
@@ -146,6 +146,22 @@ static Alignment readSingleAlignment(std::istream& input) {
                 n = 1;
             } else if(n==1) {
                 ss >> type >> qName >> qStart >> size >> qStrand >> qSrcSize >> qSeq;
+                //extracting pair membership info
+                std::string delim = "/";
+                auto start = 0U;
+                auto end = qName.find(delim);
+                if (end == std::string::npos) {
+                    std::cerr << "Read names not in ReadID/1  ReadID/2 format" << std::endl;
+                    std::exit(EXIT_FAILURE);
+                }
+                qNameNoPair = qName.substr(start,end-start);
+                pairName = qName.substr(end + delim.length());
+                //std::cout << pairName << std::endl;
+                if (pairName != "1" && pairName != "2" ){
+                    std::cerr << "Reads names should end in /1 or /2" << std::endl;
+                    std::exit(EXIT_FAILURE);
+                }
+                
                 n = 2;
             } else {
                 err("Unavailable Input Format!");
@@ -159,6 +175,8 @@ static Alignment readSingleAlignment(std::istream& input) {
     aln.size = size;
     aln.score = score;
     aln.qName = qName;
+    aln.qNameNoPair = qNameNoPair;
+    aln.qPairName = pairName;
     aln.rName = rName;
     aln.qStart = qStart;
     aln.rStart = rStart;
@@ -445,6 +463,73 @@ void outputAlignmentSam(const std::vector<Alignment>& X, const std::vector<Align
         << "*" << std::endl;                // QUAL (unavailable)
 
 }
+
+void outputLoneNative(const std::vector<Alignment>& aln){ 
+    //takes in alignments of lone reads (i.e. mate is unmapped), and outputs it alignment in native format
+    //if there is only one alignment, then we just output that. 
+    //if there are more than one, then, in theory, we need to do something similar to last-split or choose best pairs.
+    if (aln.size() == 1) std::cout << "write me" << endl;
+    else std::cout << "not implemented" << endl;
+}
+
+
+void startSplitPEProcess(const std::vector<Alignment>& alns1, const std::vector<Alignment>& alns2, AlignmentParameters& params, LastPairProbsOptions& opts){
+    if (alns1.size() > 1) calcProbAndOutput(alns1, alns2, params, opts, true)
+    else if (alns1.size() == 1) {
+        if(opts.isSamFormat) outputAlignmentSam(alns1, alns2, true)
+        else outputLoneNative(alns1)
+    }
+        
+    if (alns2.size() > 1) calcProbAndOutput(alns2, alns1, params, opts, false)
+    else if (alns2.size() == 1) {
+        if(opts.isSamFormat) outputAlignmentSam(alns2, alns1, false)
+        else outputLoneNative(alns2)
+    }
+}
+        
+
+void lastSplitPe(LastPairProbsOptions& opts) {
+    const std::vector<std::string>& inputs = opts.inputFileNames;   
+    size_t n = inputs.size();
+    std::ifstream inFile1;
+    std::istream& input = (n > 0) ? cbrc::openIn(inputs[0], inFile1) : std::cin;
+    AlignmentParameters params = readHeaderOrDie(input);
+    
+    std::vector<Alignment> X; // X will hold alignments of read/1, and Y of read/2
+    std::vector<Alignment> Y;
+    
+    Alignment currentAln = readSingleAlignment(input);
+    if (currentAln.size == -1) return; // empty maf file
+    while(true){
+        //std::cout << currentAln.qName << " " << currentAln.qNameNoPair << " " << currentAln.qPairName << std::endl;
+        if (currentAln.qPairName == "1") X.push_back(currentAln);
+        else Y.push_back(currentAln);
+        
+        Alignment nextAln = readSingleAlignment(input);
+        
+        if (nextAln.size != -1) { //some alignment was read
+            if (currentAln.qNameNoPair == nextAln.qNameNoPair) { //either same read OR same pair
+                //std::cout << "same pair" << std::endl ;
+                currentAln = nextAln;
+                continue;
+            }
+            else { //different pair 
+                //std::cout << "different pair" << std::endl ;
+                startSplitPEProcess(X,Y,params,opts); 
+                currentAln = nextAln;
+                X.clear();
+                Y.clear();
+                continue;
+            }
+        }
+        else{ // readSingleAlignment didn't read in alignment because of EOF or other reasons.
+            startSplitPEProcess(X,Y,params,opts);
+            //std::cout << "EOF" << std::endl ;
+            break;
+        }
+    }
+}
+/*
 void lastSplitPe(LastPairProbsOptions& opts) {
     const std::vector<std::string>& inputs = opts.inputFileNames;
     size_t n = inputs.size();
@@ -478,8 +563,15 @@ void lastSplitPe(LastPairProbsOptions& opts) {
             else break;
         }
         A = std::move(A2);
-
+        std::cout << "======" << std::endl ;
+        std::cout << "X.size(): " << X.size() << std::endl ;
+        std::cout << "qname : " << X[0].qName << std::endl ;
+        std::cout << "Y.size(): " << Y.size() << std::endl ;
+        std::cout << "qname : " << Y[0].qName << std::endl ;
+        std::cout << "======" << std::endl ;
+        
         if(X.size() == 1) {
+           
            if(opts.isSamFormat) outputAlignmentSam(X, Y, true);
         } else {
             calcProbAndOutput(X, Y, params, opts, true);
@@ -492,3 +584,4 @@ void lastSplitPe(LastPairProbsOptions& opts) {
         }
     }
 }
+*/
