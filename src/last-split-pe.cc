@@ -468,22 +468,22 @@ void outputLoneNative(const std::vector<Alignment>& aln){
     //takes in alignments of lone reads (i.e. mate is unmapped), and outputs it alignment in native format
     //if there is only one alignment, then we just output that. 
     //if there are more than one, then, in theory, we need to do something similar to last-split or choose best pairs.
-    if (aln.size() == 1) std::cout << "write me" << endl;
-    else std::cout << "not implemented" << endl;
+    if (aln.size() == 1) std::cout << "write me" << std::endl;
+    else std::cout << "not implemented" << std::endl;
 }
 
 
-void startSplitPEProcess(const std::vector<Alignment>& alns1, const std::vector<Alignment>& alns2, AlignmentParameters& params, LastPairProbsOptions& opts){
-    if (alns1.size() > 1) calcProbAndOutput(alns1, alns2, params, opts, true)
+void startSplitPEProcess(std::vector<Alignment>& alns1, std::vector<Alignment>& alns2, AlignmentParameters& params, LastPairProbsOptions& opts){
+    if (alns1.size() > 1) calcProbAndOutput(alns1, alns2, params, opts, true) ;
     else if (alns1.size() == 1) {
-        if(opts.isSamFormat) outputAlignmentSam(alns1, alns2, true)
-        else outputLoneNative(alns1)
+        if(opts.isSamFormat) outputAlignmentSam(alns1, alns2, true) ; // logical fallacy here. we should have decided on alns2, before changing to samFormat
+        else outputLoneNative(alns1);
     }
         
-    if (alns2.size() > 1) calcProbAndOutput(alns2, alns1, params, opts, false)
+    if (alns2.size() > 1) calcProbAndOutput(alns2, alns1, params, opts, false) ;
     else if (alns2.size() == 1) {
-        if(opts.isSamFormat) outputAlignmentSam(alns2, alns1, false)
-        else outputLoneNative(alns2)
+        if(opts.isSamFormat) outputAlignmentSam(alns2, alns1, false) ;
+        else outputLoneNative(alns2) ;
     }
 }
         
@@ -495,8 +495,8 @@ void lastSplitPe(LastPairProbsOptions& opts) {
     std::istream& input = (n > 0) ? cbrc::openIn(inputs[0], inFile1) : std::cin;
     AlignmentParameters params = readHeaderOrDie(input);
     
-    std::vector<Alignment> X; // X will hold alignments of read/1, and Y of read/2
-    std::vector<Alignment> Y;
+    std::vector<Alignment> X, Y; // X will hold alignments of read/1, and Y of read/2
+  
     
     Alignment currentAln = readSingleAlignment(input);
     if (currentAln.size == -1) return; // empty maf file
@@ -572,7 +572,7 @@ void lastSplitPe(LastPairProbsOptions& opts) {
         
         if(X.size() == 1) {
            
-           if(opts.isSamFormat) outputAlignmentSam(X, Y, true);
+           if(opts.isSamFormat) outputAlignmentSam(X, Y, true); // logical fallacy here. we should have decided on alns2, before changing to samFormat
         } else {
             calcProbAndOutput(X, Y, params, opts, true);
         }
