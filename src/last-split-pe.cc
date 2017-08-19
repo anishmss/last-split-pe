@@ -14,6 +14,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <bitset>
+#include <array>
 #include <cassert>
 
 static void err(const std::string& s) {
@@ -29,7 +30,7 @@ static double logSumExp(const double a, const double b) {
 struct Alignment {
   double score;
   std::string qName, qNameNoPair, qPairName, rName;
-  long rStart, qStart, qAlnsize, rAlnSize, rSrcSize, qSrcSize;
+  long rStart, qStart, qAlnSize, rAlnSize, rSrcSize, qSrcSize, size;
   char rStrand, qStrand;
   std::string qSeq, rSeq, prob;
 };
@@ -145,7 +146,7 @@ static Alignment readSingleAlignment(std::istream& input) {
                 ss >> type >> rName >> rStart >> rAlnSize >> rStrand >> rSrcSize >> rSeq;
                 n = 1;
             } else if(n==1) {
-                ss >> type >> qName >> qStart >> qAlnsize >> qStrand >> qSrcSize >> qSeq;
+                ss >> type >> qName >> qStart >> qAlnSize >> qStrand >> qSrcSize >> qSeq;
                 //extracting pair membership info
                 std::string delim = "/";
                 auto start = 0U;
@@ -467,23 +468,31 @@ void outputAlignmentSam(const std::vector<Alignment>& X, const std::vector<Align
 
 }
 
+std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment>& alns1, std::vector<Alignment>& alns2, AlignmentParameters& params, LastPairProbsOptions& opts)
+{
+    return std::vector<std::vector<AlignmentPair>>();
+}
+
+std::vector<AlignmentPair> chooseBestPair(std::vector<std::vector<AlignmentPair>> readProbs) {
+    return std::vector<AlignmentPair>();
+}
+
+void outputSAM(std::vector<AlignmentPair> read1Aln, std::vector<AlignmentPair> read2Aln) {
+
+}
+
+void outputNative(std::vector<AlignmentPair> readAln) {
+
+}
+
 void startSplitPEProcess(std::vector<Alignment>& alns1, std::vector<Alignment>& alns2, 
                          AlignmentParameters& params, LastPairProbsOptions& opts){
     
-    //get read lengths
-    int readOneLen = alns1.empty()? 0: alns1[0].qSrcSize 
-    int readTwoLen = alns2.empty()? 0: alns2[0].qSrcSize
-    std::array<std::array<AlignmentPair,reaOneLen>,alns1.size()> read1Probs; 
-    std::array<std::array<AlignmentPair,reaTwoLen>,alns2.size()> read2Probs;
-    std::array<AlignmentPair,read1Len> read1FinalAln;
-    std::array<AlignmentPair,read2Len> read2FinalAln;
-
+    std::vector<std::vector<AlignmentPair>> read1Probs = calcProb(alns1,alns2,params,opts) ;
+    std::vector<std::vector<AlignmentPair>> read2Probs = calcProb(alns2,alns1,params,opts) ;
     
-    read1Probs = calcProb(alns1,alns2,params,opts) ;
-    read2Probs = calcProb(alns2,alns1,params,opts) ;
-    
-    read1FinalAln = chooseBestPair(read1Probs);
-    read2FinalAln = chooseBestPair(read2Probs);
+    std::vector<AlignmentPair> read1FinalAln = chooseBestPair(read1Probs);
+    std::vector<AlignmentPair> read2FinalAln = chooseBestPair(read2Probs);
     
     if(opts.isSamFormat){
         outputSAM(read1FinalAln,read2FinalAln);
