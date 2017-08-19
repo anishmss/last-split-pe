@@ -29,7 +29,7 @@ static double logSumExp(const double a, const double b) {
 struct Alignment {
   double score;
   std::string qName, qNameNoPair, qPairName, rName;
-  long rStart, qStart, size, rSrcSize, qSrcSize;
+  long rStart, qStart, qAlnsize, rAlnSize, rSrcSize, qSrcSize;
   char rStrand, qStrand;
   std::string qSeq, rSeq, prob;
 };
@@ -127,7 +127,7 @@ static Alignment readSingleAlignment(std::istream& input) {
     double score;
     std::string str_score, rName, qName, pairName, qNameNoPair, rSeq, qSeq, prob;
     char rStrand, qStrand;
-    long rStart, qStart, rSrcSize, qSrcSize, size = -1;
+    long rStart, qStart, rSrcSize, qSrcSize, rAlnSize, qAlnSize, size = -1;
     while (std::getline(input, line)) {
         if(line == "") break;
         char begin = line[0];
@@ -142,10 +142,10 @@ static Alignment readSingleAlignment(std::istream& input) {
         } else if(begin == 's') {
             char type;
             if(n==0) {
-                ss >> type >> rName >> rStart >> size >> rStrand >> rSrcSize >> rSeq;
+                ss >> type >> rName >> rStart >> rAlnSize >> rStrand >> rSrcSize >> rSeq;
                 n = 1;
             } else if(n==1) {
-                ss >> type >> qName >> qStart >> size >> qStrand >> qSrcSize >> qSeq;
+                ss >> type >> qName >> qStart >> qAlnsize >> qStrand >> qSrcSize >> qSeq;
                 //extracting pair membership info
                 std::string delim = "/";
                 auto start = 0U;
@@ -180,6 +180,8 @@ static Alignment readSingleAlignment(std::istream& input) {
     aln.rName = rName;
     aln.qStart = qStart;
     aln.rStart = rStart;
+    aln.rAlnSize = rAlnSize;
+    aln.qAlnSize = qAlnSize;
     aln.rSrcSize = rSrcSize;
     aln.qSrcSize = qSrcSize;
     aln.rStrand = rStrand;
@@ -241,22 +243,23 @@ void calcProbAndOutput(std::vector<Alignment>& X, std::vector<Alignment>& Y, Ali
 
     size_t sizeX = X[0].qSrcSize;
     std::vector<long> i_j(X.size(), -1);
-    std::vector<double> log_p_Hj(X.size(), 0.0);
+    std::cout << std::endl;
+    std::vector<double> log_p_Hj(X.size(), 0.0);                                                                                                                                                                                                                                                                                        
     std::vector<double> log_p_y_Hj(X.size(), 0.0);
     std::vector<double> p_Hj_y(X.size(), 0.0);
     
     if(!opts.isSamFormat) std::cout << X[0].qName;
     std::vector<AlignmentPair> alnpair;
     for(size_t i=0; i<sizeX; ++i) {
-        std::fill(i_j.begin(), i_j.end(), -1);
+        std::fill(i_j.begin(), i_j.end(), -1); // !!contrast to line 243
         std::fill(log_p_Hj.begin(), log_p_Hj.end(), -1.0e99);
         std::fill(log_p_y_Hj.begin(), log_p_y_Hj.end(), -1.0e99);
         std::fill(p_Hj_y.begin(), p_Hj_y.end(), 0.0);
         double p_R = 0.0;
         for(size_t j=0; j<X.size(); ++j) {
             // prior probability: p(H_j)
-            if(i >= X[j].qStart && i < X[j].qStart+X[j].size) {
-                i_j[j] = X[j].rStart + i - X[j].qStart;
+            if(i >= X[j].qStart && i < X[j].qStart+X[j].size) { 
+                i_j[j] = X[j].rStart + i - X[j].qStart; // !!! neglects gaps. need to fix this
                 char c = X[j].prob[i - X[j].qStart];
                 double p = 1.0 - std::pow(10.0, -((c - 33) / 10.0));
                 log_p_Hj[j] = std::log(p);
@@ -464,26 +467,30 @@ void outputAlignmentSam(const std::vector<Alignment>& X, const std::vector<Align
 
 }
 
-void outputLoneNative(const std::vector<Alignment>& aln){ 
-    //takes in alignments of lone reads (i.e. mate is unmapped), and outputs it alignment in native format
-    //if there is only one alignment, then we just output that. 
-    //if there are more than one, then, in theory, we need to do something similar to last-split or choose best pairs.
-    if (aln.size() == 1) std::cout << "write me" << std::endl;
-    else std::cout << "not implemented" << std::endl;
-}
+void startSplitPEProcess(std::vector<Alignment>& alns1, std::vector<Alignment>& alns2, 
+                         AlignmentParameters& params, LastPairProbsOptions& opts){
+    
+    //get read lengths
+    int readOneLen = alns1.empty()? 0: alns1[0].qSrcSize 
+    int readTwoLen = alns2.empty()? 0: alns2[0].qSrcSize
+    std::array<std::array<AlignmentPair,reaOneLen>,alns1.size()> read1Probs; 
+    std::array<std::array<AlignmentPair,reaTwoLen>,alns2.size()> read2Probs;
+    std::array<AlignmentPair,read1Len> read1FinalAln;
+    std::array<AlignmentPair,read2Len> read2FinalAln;
 
-
-void startSplitPEProcess(std::vector<Alignment>& alns1, std::vector<Alignment>& alns2, AlignmentParameters& params, LastPairProbsOptions& opts){
-    if (alns1.size() > 1) calcProbAndOutput(alns1, alns2, params, opts, true) ;
-    else if (alns1.size() == 1) {
-        if(opts.isSamFormat) outputAlignmentSam(alns1, alns2, true) ; // logical fallacy here. we should have decided on alns2, before changing to samFormat
-        else outputLoneNative(alns1);
+    
+    read1Probs = calcProb(alns1,alns2,params,opts) ;
+    read2Probs = calcProb(alns2,alns1,params,opts) ;
+    
+    read1FinalAln = chooseBestPair(read1Probs);
+    read2FinalAln = chooseBestPair(read2Probs);
+    
+    if(opts.isSamFormat){
+        outputSAM(read1FinalAln,read2FinalAln);
     }
-        
-    if (alns2.size() > 1) calcProbAndOutput(alns2, alns1, params, opts, false) ;
-    else if (alns2.size() == 1) {
-        if(opts.isSamFormat) outputAlignmentSam(alns2, alns1, false) ;
-        else outputLoneNative(alns2) ;
+    else{
+        outputNative(read1FinalAln);
+        outputNative(read2FinalAln);
     }
 }
         
@@ -572,7 +579,7 @@ void lastSplitPe(LastPairProbsOptions& opts) {
         
         if(X.size() == 1) {
            
-           if(opts.isSamFormat) outputAlignmentSam(X, Y, true); // logical fallacy here. we should have decided on alns2, before changing to samFormat
+           if(opts.isSamFormat) outputAlignmentSam(X, Y, true); // !!! logical fallacy here. we should have decided on alns2, before changing to samFormat
         } else {
             calcProbAndOutput(X, Y, params, opts, true);
         }
