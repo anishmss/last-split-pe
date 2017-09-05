@@ -1,4 +1,4 @@
-// Copyright 2017 Naruki Yoshikawa
+// Copyright 2017 Naruki Yoshikawa, Anish MS Shrestha
 // Copyright 2014 Toshiyuki Sato
 // Copyright 2014 Martin C. Frith
 
@@ -352,12 +352,14 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
                                                  AlignmentParameters &params, LastPairProbsOptions &opts)
 {
 
+    /*
     if (X.size() == 0 || Y.size() == 0)
     {
         std::cerr << "Invalid input: Not pair" << std::endl;
         //std::exit(EXIT_FAILURE);
         return std::vector<std::vector<AlignmentPair>>();
     }
+    */
     // vector to store result
     std::vector<std::vector<AlignmentPair>> alnprobs(X[0].qSrcSize, std::vector<AlignmentPair>(X.size()));
 
@@ -382,7 +384,7 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
     const long GAP = -2;
     const double LOG0 = -1.0e99;
 
-    for (size_t qPos = 0; qPos < alnprobs.size(); ++qPos)
+    for (size_t qPos = 0; qPos < alnprobs.size(); ++qPos) //go through each position in query
     {
         // initialization
         std::fill(i_j.begin(), i_j.end(), NOALIGN);
@@ -390,7 +392,7 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
         std::fill(log_p_y_Hj.begin(), log_p_y_Hj.end(), LOG0);
         std::fill(p_Hj_y.begin(), p_Hj_y.end(), 0);
 
-        double p_R = 0.0;
+        
         for (size_t aln = 0; aln < X.size(); ++aln)
         {
             if (qPos == X[aln].qStart)
@@ -402,6 +404,8 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
                 qPosWithGap[aln]++;
             }
         }
+        
+        double p_R = 0.0; // sum of column probabilities across candidate alignments. updated below
         for (size_t aln = 0; aln < X.size(); ++aln)
         {
             // if current query position is reported in X[aln]
@@ -418,50 +422,58 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
                 char c = X[aln].prob[rPosWithGap[aln] - X[aln].rStart];
                 double p = 1.0 - std::pow(10.0, -((c - 33) / 10.0));
                 log_p_Hj[aln] = std::log(p);
+                p_Hj_y[aln] = p ; //initialize posterior = prior.
                 p_R += p;
             }
-            // conditional probability p(Y_k | H_j)
-            for (size_t k = 0; k < Y.size(); ++k)
-            {
-                // estimate flagment length
-                int flag_len = -1;
-                if (X[aln].qStrand == '+' && Y[k].qStrand == '-')
-                {
-                    flag_len = (qPos - X[aln].qStart - 1) + (Y[k].rStart - i_j[aln] + 1) + Y[k].qSrcSize;
-                }
-                else if (X[aln].qStrand == '+' && Y[k].qStrand == '-')
-                {
-                    flag_len = i_j[aln] - Y[k].rStart + i_j[aln] + X[aln].qSrcSize - (qPos - X[aln].qStart - 1);
-                }
-                // TODO: What if other cases??
-
-                // p(inferred |f|)
-                double log_pF = -1e99;
-                double pF = 0.0;
-                if (flag_len > 0)
-                {
-                    pF = (1.0 / opts.sdev / std::sqrt(2.0 * M_PI)) * std::exp(-pow(flag_len - opts.fraglen, 2.0) / 2.0 / pow(opts.sdev, 2.0));
-                    log_pF = std::log(pF);
-                }
-                // p(Y_k, I=0 | H_j)
-                log_p_y_Hj[aln] = logSumExp(log_p_y_Hj[aln], log_pF + Y[k].score / params.tGet() + std::log(1.0 - prob_disjoint));
-                // p(Y_k, I=1 | H_j)
-                log_p_y_Hj[aln] = logSumExp(log_p_y_Hj[aln],
-                                            -std::log(2.0 * params.gGet()) + Y[k].score / params.tGet() / 2.0 + std::log(prob_disjoint));
-            }
         }
-        // denominator
-        double Z = -1.0e99;
-        for (size_t l = 0; l < X.size(); ++l)
+        
+        if (X.size() > 1 || !Y.empty() ) //update probabilities only if need be. makes code faster(?).
         {
-            if (i_j[l] != -1)
+            for (size_t aln = 0; aln < X.size(); ++aln)
             {
-                Z = logSumExp(log_p_y_Hj[l] + log_p_Hj[l], Z);
+                // conditional probability p(Y_k | H_j)
+                for (size_t k = 0; k < Y.size(); ++k)
+                {
+                    // estimate flagment length
+                    int flag_len = -1;
+                    if (X[aln].qStrand == '+' && Y[k].qStrand == '-')
+                    {
+                        flag_len = (qPos - X[aln].qStart - 1) + (Y[k].rStart - i_j[aln] + 1) + Y[k].qSrcSize;
+                    }
+                    else if (X[aln].qStrand == '+' && Y[k].qStrand == '-')
+                    {
+                        flag_len = i_j[aln] - Y[k].rStart + i_j[aln] + X[aln].qSrcSize - (qPos - X[aln].qStart - 1);
+                    }
+                    // TODO: What if other cases??
+    
+                    // p(inferred |f|)
+                    double log_pF = -1e99;
+                    double pF = 0.0;
+                    if (flag_len > 0)
+                    {
+                        pF = (1.0 / opts.sdev / std::sqrt(2.0 * M_PI)) * std::exp(-pow(flag_len - opts.fraglen, 2.0) / 2.0 / pow(opts.sdev, 2.0));
+                        log_pF = std::log(pF);
+                    }
+                    // p(Y_k, I=0 | H_j)
+                    log_p_y_Hj[aln] = logSumExp(log_p_y_Hj[aln], log_pF + Y[k].score / params.tGet() + std::log(1.0 - prob_disjoint));
+                    // p(Y_k, I=1 | H_j)
+                    log_p_y_Hj[aln] = logSumExp(log_p_y_Hj[aln],
+                                                -std::log(2.0 * params.gGet()) + Y[k].score / params.tGet() / 2.0 + std::log(prob_disjoint));
+                }
             }
-        }
-        for (size_t j = 0; j < X.size(); ++j)
-        {
-            p_Hj_y[j] = std::exp(log_p_y_Hj[j] + log_p_Hj[j] - Z);
+            // denominator
+            double Z = -1.0e99;
+            for (size_t l = 0; l < X.size(); ++l)
+            {
+                if (i_j[l] != -1)
+                {
+                    Z = logSumExp(log_p_y_Hj[l] + log_p_Hj[l], Z);
+                }
+            }
+            for (size_t j = 0; j < X.size(); ++j)
+            {
+                p_Hj_y[j] = std::exp(log_p_y_Hj[j] + log_p_Hj[j] - Z);
+            }
         }
         for (size_t n = 0; n < X.size(); ++n)
         {
@@ -498,9 +510,9 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
     return alnprobs;
 }
 
-std::vector<AlignmentPair> chooseBestPair(std::vector<std::vector<AlignmentPair>> readProbs)
+std::vector<AlignmentPair> chooseBestPair(std::vector<std::vector<AlignmentPair>> readProbs, std::vector<AlignmentPair> &bestPairs)
 {
-    std::vector<AlignmentPair> bestPairs;
+    //std::vector<AlignmentPair> bestPairs;
     bestPairs.reserve(readProbs.size());
 
     for (auto &pairs : readProbs)
@@ -621,7 +633,7 @@ void outputNative(std::vector<AlignmentPair> readAln)
     std::cout << readAln[0].qName;
     for (auto &p : readAln)
     {
-        std::cout << "\t(" << p.rName << "," << p.rIndex << "," << p.rStrand << ")";
+        std::cout << "\t(" << p.rName << "," << p.rIndex << "," << p.rStrand << "," << p.probability << ")";
     }
     std::cout << std::endl;
 }
@@ -629,7 +641,28 @@ void outputNative(std::vector<AlignmentPair> readAln)
 void startSplitPEProcess(std::vector<Alignment> &alns1, std::vector<Alignment> &alns2,
                          AlignmentParameters &params, LastPairProbsOptions &opts)
 {
-
+    std::vector<AlignmentPair> read1FinalAln; 
+    std::vector<AlignmentPair> read2FinalAln; 
+        
+    if (!alns1.empty())
+    {
+        std::vector<std::vector<AlignmentPair>> read1Probs = calcProb(alns1, alns2, params, opts);
+        chooseBestPair(read1Probs,read1FinalAln);
+        if (!opts.isSamFormat) outputNative(read1FinalAln);
+    }
+    
+    if (!alns2.empty())
+    {
+        std::vector<std::vector<AlignmentPair>> read2Probs = calcProb(alns2, alns1, params, opts);
+        chooseBestPair(read2Probs,read2FinalAln);
+        if (!opts.isSamFormat) outputNative(read2FinalAln);
+    }
+    
+    if (opts.isSamFormat)
+    {
+        outputSAM(read1FinalAln, read2FinalAln); //TODO make sure outputSAM() checks if one of the vectors is empty.
+    }
+    /*
     //std::cout << "start calcProb" << std::endl;
     std::vector<std::vector<AlignmentPair>> read1Probs = calcProb(alns1, alns2, params, opts);
     std::vector<std::vector<AlignmentPair>> read2Probs = calcProb(alns2, alns1, params, opts);
@@ -638,8 +671,8 @@ void startSplitPEProcess(std::vector<Alignment> &alns1, std::vector<Alignment> &
     std::vector<AlignmentPair> read1FinalAln = chooseBestPair(read1Probs);
     std::vector<AlignmentPair> read2FinalAln = chooseBestPair(read2Probs);
     //std::cout << "end chooseBestPair" << std::endl;
-
     //std::cout << "start output" << std::endl;
+    
     if (opts.isSamFormat)
     {
         outputSAM(read1FinalAln, read2FinalAln);
@@ -650,6 +683,8 @@ void startSplitPEProcess(std::vector<Alignment> &alns1, std::vector<Alignment> &
         outputNative(read2FinalAln);
     }
     //std::cout << "end output" << std::endl;
+    */
+   
 }
 
 void lastSplitPe(LastPairProbsOptions &opts)
