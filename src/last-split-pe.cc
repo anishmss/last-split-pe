@@ -351,7 +351,7 @@ void outputAlignmentSam(const std::vector<Alignment> &X, const std::vector<Align
 std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std::vector<Alignment> &Y,
                                                  AlignmentParameters &params, LastPairProbsOptions &opts)
 {
-
+    
     /*
     if (X.size() == 0 || Y.size() == 0)
     {
@@ -419,7 +419,7 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
                 {
                     i_j[aln] = rPos[aln];
                 }
-                char c = X[aln].prob[rPosWithGap[aln] - X[aln].rStart];
+                char c = X[aln].prob[rPosWithGap[aln] - X[aln].rStart]; 
                 double p = 1.0 - std::pow(10.0, -((c - 33) / 10.0));
                 log_p_Hj[aln] = std::log(p);
                 p_Hj_y[aln] = p ; //initialize posterior = prior.
@@ -427,14 +427,22 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
             }
         }
         
-        if (X.size() > 1 || !Y.empty() ) //update probabilities only if need be. makes code faster(?).
+        //if i_j[aln] == GAP for one of the alns, we don't know what to do.
+        bool oneGAP = false;
+        for (size_t aln = 0; aln < X.size(); ++aln)
         {
+            if (i_j[aln] == GAP) oneGAP = true;
+        }
+        
+        if (!(X.size() == 1 || Y.empty() || oneGAP)) //update probabilities only if need be. makes code faster(?). last condition is TODO
+        {   
             for (size_t aln = 0; aln < X.size(); ++aln)
             {
                 // conditional probability p(Y_k | H_j)
                 for (size_t k = 0; k < Y.size(); ++k)
                 {
-                    // estimate flagment length
+                    
+                    // estimate fragment length
                     int flag_len = -1;
                     if (X[aln].qStrand == '+' && Y[k].qStrand == '-')
                     {
@@ -461,17 +469,19 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
                                                 -std::log(2.0 * params.gGet()) + Y[k].score / params.tGet() / 2.0 + std::log(prob_disjoint));
                 }
             }
+            
             // denominator
             double Z = -1.0e99;
             for (size_t l = 0; l < X.size(); ++l)
             {
-                if (i_j[l] != -1)
+                if (i_j[l] != NOALIGN)
                 {
                     Z = logSumExp(log_p_y_Hj[l] + log_p_Hj[l], Z);
                 }
             }
             for (size_t j = 0; j < X.size(); ++j)
             {
+                //why is there no if (i_j[l] != NOALIGN) check like above?
                 p_Hj_y[j] = std::exp(log_p_y_Hj[j] + log_p_Hj[j] - Z);
             }
         }
