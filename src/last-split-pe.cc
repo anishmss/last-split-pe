@@ -363,16 +363,67 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
     // vector to store result
     std::vector<std::vector<AlignmentPair>> alnprobs(X[0].qSrcSize, std::vector<AlignmentPair>(X.size()));
 
+   
+    const long NOALIGN = -1;
+    const long GAP = -2;
+    const double LOG0 = -1.0e99;
+    
+    //construct query position to alignment column map
+    std::vector<std::vector<long>> qPos2AlnCol(X.size(),std::vector<long>(X[0].qSrcSize,NOALIGN)); //long is overkill, but for consistency
+    for (size_t aln = 0; aln < X.size(); ++aln)
+    {
+       auto queryPos = X[aln].qStart;
+       auto querySeq = X[aln].qSeq;
+       for(long alnColPos=0; alnColPos < querySeq.length(); alnColPos++) // querySeq.length() gives alignment size. 
+       {
+            if (querySeq[alnColPos] != '-')
+            {
+                qPos2AlnCol[aln][queryPos] = alnColPos;
+                queryPos++;
+            }
+        }
+           
+    }
+    
+    //construct alignment column to reference position map
+    std::vector<std::vector<long>> alnCol2rPos; 
+    for (size_t aln = 0; aln < X.size(); ++aln)
+    {
+        auto refPos = X[aln].rStart;
+        auto refSeq = X[aln].rSeq;
+        std::vector<long> tempMap;
+        for(long alnColPos=0; alnColPos < refSeq.length(); alnColPos++)
+        {
+            if (refSeq[alnColPos] != '-')
+            {
+                tempMap.push_back(refPos);
+                refPos++;
+            }
+            else
+            {
+                tempMap.push_back(GAP);
+            }
+            
+        }
+        alnCol2rPos.push_back(tempMap);
+    }
+    
+    //the following is the core part of last-split-pe where probabilities are updated for each position in query
+
     // p(I=1) i.e. probability of disjoint
     const double prob_disjoint = 0.01;
     // the base x[i] aligns to position i_j in reference
     std::vector<long> i_j(X.size());
+    
+    /*
     // reference position
     std::vector<long> rPos(X.size(), 0);
     // reference position including gap
     std::vector<long> rPosWithGap(X.size(), 0);
     // query position including gap
     std::vector<long> qPosWithGap(X.size(), 0);
+    */
+    
     // p(H_j | R): prior probability that x[i] has been sequenced from position i_j in reference
     std::vector<double> log_p_Hj(X.size());
     // p(y | H_j, R): likelihood
@@ -380,19 +431,16 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
     // p(H_j | y, R): posterior probability
     std::vector<double> p_Hj_y(X.size());
 
-    const long NOALIGN = -1;
-    const long GAP = -2;
-    const double LOG0 = -1.0e99;
-
-    for (size_t qPos = 0; qPos < alnprobs.size(); ++qPos) //go through each position in query
-    {
+    for (int qPos = 0; qPos < alnprobs.size(); ++qPos) 
+    {   
+        //std::cout << "readPosition:" << qPos << ". " ;
         // initialization
         std::fill(i_j.begin(), i_j.end(), NOALIGN);
         std::fill(log_p_Hj.begin(), log_p_Hj.end(), LOG0);
         std::fill(log_p_y_Hj.begin(), log_p_y_Hj.end(), LOG0);
         std::fill(p_Hj_y.begin(), p_Hj_y.end(), 0);
 
-        
+        /*
         for (size_t aln = 0; aln < X.size(); ++aln)
         {
             if (qPos == X[aln].qStart)
@@ -401,16 +449,20 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
             }
             while (X[aln].qSeq[qPosWithGap[aln] - X[aln].qStart] == '-')
             {
-                qPosWithGap[aln]++;
+                qPosWithGap[aln]++; // rPosWithGap should also move??
             }
         }
+        */
         
+        //set up prior probability
         double p_R = 0.0; // sum of column probabilities across candidate alignments. updated below
         for (size_t aln = 0; aln < X.size(); ++aln)
         {
             // if current query position is reported in X[aln]
-            if (qPos >= X[aln].qStart && qPos < X[aln].qStart + X[aln].qAlnSize)
+            //if (qPos >= X[aln].qStart && qPos < X[aln].qStart + X[aln].qAlnSize)
+            if (qPos2AlnCol[aln][qPos] != NOALIGN)
             {
+                /*
                 if (X[aln].rSeq[rPosWithGap[aln] - X[aln].rStart] == '-')
                 {
                     i_j[aln] = GAP;
@@ -419,15 +471,20 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
                 {
                     i_j[aln] = rPos[aln];
                 }
-                char c = X[aln].prob[rPosWithGap[aln] - X[aln].rStart]; 
+                */
+                i_j[aln] = alnCol2rPos[aln][qPos2AlnCol[aln][qPos]] ;              
+                
+                //char c = X[aln].prob[rPosWithGap[aln] - X[aln].rStart]; 
+                char c = X[aln].prob[qPos2AlnCol[aln][qPos]];
                 double p = 1.0 - std::pow(10.0, -((c - 33) / 10.0));
                 log_p_Hj[aln] = std::log(p);
                 p_Hj_y[aln] = p ; //initialize posterior = prior.
                 p_R += p;
+                               
             }
         }
         
-        //if i_j[aln] == GAP for one of the alns, we don't know what to do.
+        //if i_j[aln] == GAP for one of the alns, we don't know what to do, yet.
         bool oneGAP = false;
         for (size_t aln = 0; aln < X.size(); ++aln)
         {
@@ -470,7 +527,7 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
                 }
             }
             
-            // denominator
+            //denominator
             double Z = -1.0e99;
             for (size_t l = 0; l < X.size(); ++l)
             {
@@ -485,26 +542,31 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
                 p_Hj_y[j] = std::exp(log_p_y_Hj[j] + log_p_Hj[j] - Z);
             }
         }
-        for (size_t n = 0; n < X.size(); ++n)
+        for (size_t aln = 0; aln < X.size(); ++aln)
         {
-            alnprobs[qPos][n].rName = X[n].rName;
-            alnprobs[qPos][n].qName = X[n].qName;
-            alnprobs[qPos][n].rIndex = i_j[n];
-            alnprobs[qPos][n].qIndex = qPos;
-            alnprobs[qPos][n].qStrand = X[n].qStrand;
-            alnprobs[qPos][n].rStrand = X[n].rStrand;
-            if (qPos >= X[n].qStart && qPos < X[n].qStart + X[n].qAlnSize)
+            alnprobs[qPos][aln].rName = X[aln].rName;
+            alnprobs[qPos][aln].qName = X[aln].qName;
+            alnprobs[qPos][aln].rIndex = i_j[aln];
+            alnprobs[qPos][aln].qIndex = qPos;
+            alnprobs[qPos][aln].qStrand = X[aln].qStrand;
+            alnprobs[qPos][aln].rStrand = X[aln].rStrand;
+            
+            alnprobs[qPos][aln].qBase = X[aln].qSeq[qPos2AlnCol[aln][qPos]];
+            if (qPos2AlnCol[aln][qPos] != NOALIGN)
             {
-                alnprobs[qPos][n].rBase = X[n].rSeq[rPosWithGap[n] - X[n].rStart];
-                alnprobs[qPos][n].qBase = X[n].qSeq[qPosWithGap[n] - X[n].qStart];
+                //alnprobs[qPos][n].rBase = X[n].rSeq[rPosWithGap[n] - X[n].rStart];
+                alnprobs[qPos][aln].rBase = X[aln].rSeq[qPos2AlnCol[aln][qPos]];
             }
             else
             {
-                alnprobs[qPos][n].rBase = 'X';
-                alnprobs[qPos][n].qBase = 'X';
+                alnprobs[qPos][aln].rBase = 'X';
+                //alnprobs[qPos][n].qBase = 'X';
             }
-            alnprobs[qPos][n].probability = p_R * p_Hj_y[n];
+            alnprobs[qPos][aln].probability = p_R * p_Hj_y[aln];
+            
+            
         }
+        /*
         for (size_t aln = 0; aln < X.size(); ++aln)
         {
             qPosWithGap[aln]++;
@@ -516,6 +578,7 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
             }
             rPosWithGap[aln]++;
         }
+        */
     }
     return alnprobs;
 }
@@ -656,6 +719,7 @@ void startSplitPEProcess(std::vector<Alignment> &alns1, std::vector<Alignment> &
         
     if (!alns1.empty())
     {
+        std::cout << "start calcProb" << std::endl; 
         std::vector<std::vector<AlignmentPair>> read1Probs = calcProb(alns1, alns2, params, opts);
         chooseBestPair(read1Probs,read1FinalAln);
         if (!opts.isSamFormat) outputNative(read1FinalAln);
@@ -663,6 +727,7 @@ void startSplitPEProcess(std::vector<Alignment> &alns1, std::vector<Alignment> &
     
     if (!alns2.empty())
     {
+        std::cout << "start calcProb" << std::endl; 
         std::vector<std::vector<AlignmentPair>> read2Probs = calcProb(alns2, alns1, params, opts);
         chooseBestPair(read2Probs,read2FinalAln);
         if (!opts.isSamFormat) outputNative(read2FinalAln);
