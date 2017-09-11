@@ -385,6 +385,20 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
            
     }
     
+    /*
+    std::cout << "qPos2AlnCol" << std::endl ;
+    for (size_t aln = 0; aln < X.size(); ++aln)
+    {
+        std::cout << "aln " << aln << ":" ;
+        for ( int i=0; i < qPos2AlnCol[aln].size(); i++)
+        {
+            std::cout << qPos2AlnCol[aln][i] << "," ;
+        }
+        std::cout << std::endl ;
+    }
+    */
+    
+    
     //construct alignment column to reference position map
     std::vector<std::vector<long>> alnCol2rPos; 
     for (size_t aln = 0; aln < X.size(); ++aln)
@@ -407,6 +421,19 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
         }
         alnCol2rPos.push_back(tempMap);
     }
+    
+    /*
+    std::cout << "alnCol2rPos" << std::endl ;
+    for (size_t aln = 0; aln < X.size(); ++aln)
+    {
+        std::cout << "aln " << aln << ":" ;
+        for ( int i=0; i < alnCol2rPos[aln].size(); i++)
+        {
+            std::cout << alnCol2rPos[aln][i] << "," ;
+        }
+        std::cout << std::endl ;
+    }
+    */
     
     //the following is the core part of last-split-pe where probabilities are updated for each position in query
 
@@ -483,6 +510,7 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
                                
             }
         }
+        if ( p_R > 1 ) p_R = 1; //not sure how LAST discretizes its probability
         
         //if i_j[aln] == GAP for one of the alns, we don't know what to do, yet.
         bool oneGAP = false;

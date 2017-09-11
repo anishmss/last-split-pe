@@ -22,17 +22,17 @@
 a score=50 mismap=5.81e-09
 s ref 0 50 + 350 ACAGAGATCGAGAGAGCAGAGAGCTAGAGCAGAGGAACAGGGGAACCCCA
 s 1/1 0 50 + 100 ACAGAGATCGAGAGAGCAGAGAGCTAGAGCAGAGGAACAGGGGAACCCCA
-p                %*/48=BGKPUZ^chloqrssssssssssssrqolhc^ZUPKGB=84/*%
+p                %*/48=#GKPUZ^chloqrssssssssssssrqolhc^ZUPKGB=84/*%
 
 a score=50 mismap=0.5
 s ref 100 50 + 350 GGAACCCAAATTATATATCCTATATAAGGGCTATATATAGGCCCGGGGAA
 s 1/1  50 50 + 100 GGAACCCAAATTATATATCCTATATAAGGGCTATATATAGGCCCGGGGAA
-p                  "####$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$####"
+p                  "####$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$####""
 
 a score=50 mismap=0.5
 s ref 300 50 + 350 GGAACCCAAATTATATATCCTATATAAGGGCTATATATAGGCCCGGGGAA
 s 1/1  50 50 + 100 GGAACCCAAATTATATATCCTATATAAGGGCTATATATAGGCCCGGGGAA
-p                  "####$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$####"
+p                  "####A$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$####"
 
 a score=100 mismap=5.81e-09
 s ref 200 100 + 350 TTTTCTATATACGAGAGAGACTATAGCAAAAATCTAAGCCCCGAGAGAAACCTCTCCCATATATATCTCTGGGGGATATCGAGATAGAGCCCAAAGATAG
