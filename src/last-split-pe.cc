@@ -122,7 +122,7 @@ class AlignmentParameters
 
 struct AlignmentPair
 {
-    std::string rName, qName;
+    std::string rName, qName, qNameNoPair, qPairName;
     long rIndex, qIndex;
     char rStrand, qStrand;
     char rBase, qBase;
@@ -259,10 +259,10 @@ static Alignment readSingleAlignment(std::istream &input)
     
 }
 
-void outputInSAM(const std::vector<Alignment> &X, const std::vector<Alignment> &Y,
-                 const std::string &refName, const long alnPos, const size_t totalLength,
+void outputInSAM(const std::string qNameNoPair,
+                 const std::string &refName, const long alnPos, const char qStrand, const size_t querySize , const size_t totalLength,
                  const std::string &seq, std::stringstream &cigar, bool isSupplementary,
-                 bool isFirst)
+                 bool isFirst , const std::vector<AlignmentPair> &Y)
 {
     // output in SAM format
     std::bitset<12> flag;
@@ -271,11 +271,12 @@ void outputInSAM(const std::vector<Alignment> &X, const std::vector<Alignment> &
     flag.set(2, false); // segment unmapped
     flag.set(3, false); // next segment in the template unmapped
 
-    flag.set(4, X[0].qStrand == '-'); // SEQ being reverse complemented
+    flag.set(4, qStrand == '-'); // SEQ being reverse complemented
     // What if some strand is '+'??
     // SEQ of the next segment in the template being reverse complemented
     // TODO: What if there are several alignments in Y?
-    flag.set(5, Y[0].qStrand == '-' ? true : false);
+    //flag.set(5, Y[0].qStrand == '-' ? true : false);
+    flag.set(5,false); //TODO
     flag.set(6, isFirst);          // the first segment in the template
     flag.set(7, !isFirst);         // the last segment in the template
     flag.set(8, false);            // secondary alignment
@@ -283,19 +284,10 @@ void outputInSAM(const std::vector<Alignment> &X, const std::vector<Alignment> &
     flag.set(10, false);           // PCR or optical duplicate
     flag.set(11, isSupplementary); // supplementary alignment
 
-    auto LastTwo = X[0].qName.substr(X[0].qName.length() - 2);
-    std::string qName;
-    if (LastTwo == "/1" || LastTwo == "/2")
-    {
-        qName = X[0].qName.substr(0, X[0].qName.length() - 2);
-    }
-    else
-    {
-        qName = X[0].qName;
-    }
-    if (totalLength < X[0].qSrcSize)
-        cigar << X[0].qSrcSize - totalLength << "H";
-    std::cout << qName << '\t'           // QNAME
+
+    if (totalLength < querySize)
+        cigar << querySize - totalLength << "H";
+    std::cout << qNameNoPair << '\t'           // QNAME
               << flag.to_ulong() << '\t' // FLAG
               << refName << '\t'         // RNAME
               << alnPos + 1 << '\t'      // RPOS
@@ -307,6 +299,8 @@ void outputInSAM(const std::vector<Alignment> &X, const std::vector<Alignment> &
               << seq << '\t'             // SEQ
               << '*' << std::endl;       // QUAL (unavailable)
 }
+
+/*
 void outputAlignmentSam(const std::vector<Alignment> &X, const std::vector<Alignment> &Y,
                         bool isFirst)
 {
@@ -369,6 +363,7 @@ void outputAlignmentSam(const std::vector<Alignment> &X, const std::vector<Align
               << X[0].qSeq << '\t'                                // SEQ
               << "*" << std::endl;                                // QUAL (unavailable)
 }
+*/
 
 std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std::vector<Alignment> &Y,
                                                  AlignmentParameters &params, LastPairProbsOptions &opts)
@@ -597,6 +592,8 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
         {
             alnprobs[qPos][aln].rName = X[aln].rName;
             alnprobs[qPos][aln].qName = X[aln].qName;
+            alnprobs[qPos][aln].qNameNoPair = X[aln].qNameNoPair;
+            alnprobs[qPos][aln].qPairName = X[aln].qPairName;
             alnprobs[qPos][aln].rIndex = i_j[aln];
             alnprobs[qPos][aln].qIndex = qPos;
             alnprobs[qPos][aln].qStrand = X[aln].qStrand;
@@ -635,9 +632,12 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
 }
 
 //std::vector<AlignmentPair>
-void chooseBestPair(std::vector<std::vector<AlignmentPair>> readProbs, std::vector<AlignmentPair> &bestPairs)
+void chooseBestPair(const std::vector<std::vector<AlignmentPair>> &readProbs, std::vector<AlignmentPair> &bestPairs)
 {
     //std::vector<AlignmentPair> bestPairs;
+    
+    if (readProbs.empty()) return;
+    
     bestPairs.reserve(readProbs.size());
     
 
@@ -668,91 +668,108 @@ void chooseBestPair(std::vector<std::vector<AlignmentPair>> readProbs, std::vect
     
 }
 
-void outputSAM(std::vector<AlignmentPair> read1Aln, std::vector<AlignmentPair> read2Aln)
+void outputSAM(const std::string qNameNoPair, const std::vector<AlignmentPair> &alnpair, const std::vector<AlignmentPair> &mateAlnPair, 
+               const AlignmentParameters &params, const bool isFirst)
 {
-    /*if(opts.isSamFormat) {
-        std::string seq;
-        long a = params.aGet();
-        long b = params.bGet();
-        long x = params.xGet();
-        size_t idx = 1;
-        bool isSupplementary = false;
-        while(idx < alnpair.size()) {
-            bool isEndAlignment = false;
-            if(idx == alnpair.size()-1) isEndAlignment = true;
-            // if match, start one alignment
-            if(alnpair[idx-1].refName == alnpair[idx].refName &&
-               alnpair[idx-1].refIndex == alnpair[idx].refIndex - 1 &&
-               alnpair[idx-1].refStrand == alnpair[idx].refStrand) {
-                size_t totalLength = 0;
-                std::stringstream cigar;
-                if(idx > 1) {
-                    cigar << idx-1 << "H";
-                    totalLength += idx - 1;
-                }
-                // count match length
-                size_t matchLength = 2;
-                seq = "";
-                seq += alnpair[idx-1].qBase;
-                seq += alnpair[idx].qBase;
-                for(size_t i=idx+1; ; ++i) {
-                    if(alnpair[i-1].refName == alnpair[i].refName &&
-                       alnpair[i-1].refStrand == alnpair[i].refStrand) {
-                        auto refIndexDiff = alnpair[i].refIndex-alnpair[i-1].refIndex;
-                        if(refIndexDiff == 1) {
-                            matchLength++;
+   
+    
+    long a = params.aGet();
+    long b = params.bGet();
+    long x = params.xGet();
+    
+    std::string seq;
+    size_t idx = 1;
+    bool isSupplementary = false;
+    while(idx < alnpair.size()) 
+    {
+        bool isEndAlignment = false;
+        if(idx == alnpair.size()-1) isEndAlignment = true;
+        // if match, start one alignment
+        if(alnpair[idx-1].rName == alnpair[idx].rName &&
+           alnpair[idx-1].rIndex == alnpair[idx].rIndex - 1 &&
+           alnpair[idx-1].rStrand == alnpair[idx].rStrand) 
+        {
+            
+            size_t totalLength = 0;
+            std::stringstream cigar;
+            if(idx > 1) 
+            {
+                cigar << idx-1 << "H";
+                totalLength += idx - 1;
+            }
+            // count match length
+            size_t matchLength = 2;
+            seq = "";
+            seq += alnpair[idx-1].qBase;
+            seq += alnpair[idx].qBase;
+            for(size_t i=idx+1; ; ++i) 
+            {
+                if(alnpair[i-1].rName == alnpair[i].rName &&
+                   alnpair[i-1].rStrand == alnpair[i].rStrand) 
+                {
+                    //TODO check for small insertions in this block
+                    auto refIndexDiff = alnpair[i].rIndex-alnpair[i-1].rIndex;
+                    if(refIndexDiff == 1) 
+                    {
+                        matchLength++;
+                        seq += alnpair[i].qBase;
+                    } 
+                    else 
+                    {
+                        cigar << matchLength << "M";
+                        totalLength += matchLength;
+                        if(a + b*refIndexDiff < x) {
+                            matchLength = 0;
+                            cigar << refIndexDiff << "D";
                             seq += alnpair[i].qBase;
                         } else {
-                            cigar << matchLength << "M";
-                            totalLength += matchLength;
-                            if(a + b*refIndexDiff < x) {
-                                matchLength = 0;
-                                cigar << refIndexDiff << "D";
-                                seq += alnpair[i].qBase;
-                            } else {
-                                isEndAlignment = true;
-                            }
-                        }
-                    } else {
-                        bool isInsertion = false;
-                        for(size_t j=i+1; a+b*(j-i)<x; ++j) {
-                            auto refIndexDiff = alnpair[i].refIndex-alnpair[i-1].refIndex;
-                            if(alnpair[j-1].refName == alnpair[j].refName &&
-                               alnpair[j-1].refStrand == alnpair[j].refStrand &&
-                               refIndexDiff == 1) 
-                            {
-                                cigar << j-i << "D";
-                                totalLength += j-i;
-                                i = j;
-                                isInsertion = true;
-                                break;
-                            }
-                        }
-                        if(!isInsertion) {
                             isEndAlignment = true;
                         }
                     }
-                    if(i == alnpair.size()-1) {
-                        isEndAlignment = true;
-                        cigar << matchLength << "M";
-                        totalLength += matchLength;
+                    
+                } 
+                else 
+                {
+                    bool isInsertion = false;
+                    for(size_t j=i+1; a+b*(j-i)<x; ++j) {
+                        auto refIndexDiff = alnpair[i].rIndex-alnpair[i-1].rIndex;
+                        if(alnpair[j-1].rName == alnpair[j].rName &&
+                           alnpair[j-1].rStrand == alnpair[j].rStrand &&
+                           refIndexDiff == 1) 
+                        {
+                            cigar << j-i << "D";
+                            totalLength += j-i;
+                            i = j;
+                            isInsertion = true;
+                            break;
+                        }
                     }
-                    if(isEndAlignment) {
-                        outputInSAM(X, Y, alnpair[idx].refName, alnpair[idx-1].refIndex, totalLength, seq, cigar, isSupplementary, isFirst);
-                        idx = i + 1;
-                        isSupplementary = true;
-                        break;
+                    if(!isInsertion) {
+                        isEndAlignment = true;
                     }
                 }
-            } else {
-                idx++;
+                if(i == alnpair.size()-1) 
+                {
+                    isEndAlignment = true;
+                    cigar << matchLength << "M";
+                    totalLength += matchLength;
+                }
+                if(isEndAlignment) 
+                {
+                    outputInSAM(qNameNoPair,alnpair[idx].rName, alnpair[idx-1].rIndex, alnpair[idx].qStrand, alnpair.size() ,totalLength, seq, cigar, isSupplementary, isFirst, mateAlnPair);
+                    idx = i + 1;
+                    isSupplementary = true;
+                    break;
+                }
             }
+        } 
+        else 
+        {
+            idx++;
         }
-    } else {
-        std::cout << std::endl;
-    }*/
-}
-
+    }
+} 
+   
 void outputNative(std::vector<AlignmentPair> readAln)
 {
     // invalid input
@@ -767,7 +784,7 @@ void outputNative(std::vector<AlignmentPair> readAln)
     std::cout << std::endl;
 }
 
-void startSplitPEProcess(std::vector<Alignment> &alns1, std::vector<Alignment> &alns2,
+void startSplitPEProcess(const std::string readNameNoPair, std::vector<Alignment> &alns1, std::vector<Alignment> &alns2,
                          AlignmentParameters &params, LastPairProbsOptions &opts)
 {
     std::vector<AlignmentPair> read1FinalAln; 
@@ -799,7 +816,9 @@ void startSplitPEProcess(std::vector<Alignment> &alns1, std::vector<Alignment> &
     
     if (opts.isSamFormat)
     {
-        outputSAM(read1FinalAln, read2FinalAln); //TODO make sure outputSAM() checks if one of the vectors is empty.
+        
+        outputSAM(readNameNoPair,read1FinalAln, read2FinalAln, params, true); //TODO make sure outputSAM() checks if one of the vectors is empty.
+        outputSAM(readNameNoPair,read2FinalAln, read1FinalAln, params, false);
     }
     /*
     //std::cout << "start calcProb" << std::endl;
@@ -861,7 +880,7 @@ void lastSplitPe(LastPairProbsOptions &opts)
             }
             else
             {   //different pair
-                startSplitPEProcess(X, Y, params, opts);
+                startSplitPEProcess(currentAln.qNameNoPair,X, Y, params, opts);
                 currentAln = nextAln;
                 X.clear();
                 Y.clear();
@@ -870,7 +889,7 @@ void lastSplitPe(LastPairProbsOptions &opts)
         }
         else
         {   // readSingleAlignment didn't read in alignment because of EOF or other reasons.
-            startSplitPEProcess(X, Y, params, opts);
+            startSplitPEProcess(currentAln.qNameNoPair,X, Y, params, opts);
             break;
         }
     }
