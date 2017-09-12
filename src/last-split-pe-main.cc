@@ -37,6 +37,7 @@ Options:\n\
   -f BP, --fraglen=BP   mean distance in bp\n\
   -s BP, --sdev=BP      standard deviation of distance\n\
   --sam                 output format is SAM\n\
+  --fasta               the reads are in fasta format, not fastq \n\
   -V, --version         show program's version number and exit\n\
 ";
 

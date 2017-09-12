@@ -27,7 +27,7 @@ struct LastPairProbsOptions {
   double disjointScore;
   double maxMissingScore1;
   double maxMissingScore2;
-  bool isSamFormat;
+  bool isSamFormat;  
 };
 
 void lastSplitPe(LastPairProbsOptions& opts);

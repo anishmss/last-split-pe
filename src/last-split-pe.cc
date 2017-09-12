@@ -17,6 +17,9 @@
 #include <array>
 #include <cassert>
 
+const long NOALIGN = -1;
+const long GAP = -2;
+
 static void err(const std::string &s)
 {
     throw std::runtime_error(s);
@@ -35,7 +38,7 @@ struct Alignment
     std::string rName, qName, qNameNoPair, qPairName;
     long rStart, qStart, rAlnSize, qAlnSize, rSrcSize, qSrcSize;
     char rStrand, qStrand;
-    std::string qSeq, rSeq, prob;
+    std::string qSeq, rSeq, prob, qual;
 };
 
 class AlignmentParameters
@@ -147,20 +150,22 @@ static AlignmentParameters readHeaderOrDie(std::istream &lines)
     return params;     // dummy
 }
 
-static Alignment readSingleAlignment(std::istream &input)
+static Alignment readSingleAlignment(std::istream &input) 
 {
     // variables to store alignment information
     double score;
-    std::string rName, qName, pairName, qNameNoPair, rSeq, qSeq, prob;
+    std::string rName, qName, pairName, qNameNoPair, rSeq, qSeq, prob, qual;
     char rStrand, qStrand;
     long rStart, qStart, rAlnSize, qAlnSize, rSrcSize, qSrcSize;
+    bool read_a, read_s1, read_s2, read_q, read_p ;
+    read_a = read_s1 = read_s2 = read_q = read_p = false;
 
     std::string line; // placeholder for storing a line
     int n = 0;        // counter to distinguish ref/query
-    while (std::getline(input, line))
+    while (std::getline(input, line)) 
     {
         if (line == "")
-            break; // blank line
+            continue; // allow multiple blank lines between records
 
         char begin = line[0];
         std::stringstream ss(line);
@@ -173,6 +178,7 @@ static Alignment readSingleAlignment(std::istream &input)
             }
             ss.ignore(8); // ignore "a score="
             ss >> score;
+            read_a = true;
         }
         else if (begin == 's')
         {
@@ -180,6 +186,7 @@ static Alignment readSingleAlignment(std::istream &input)
             if (n == 0)
             {
                 ss >> type >> rName >> rStart >> rAlnSize >> rStrand >> rSrcSize >> rSeq;
+                read_s1 = true;
                 n = 1;
             }
             else if (n == 1)
@@ -201,21 +208,35 @@ static Alignment readSingleAlignment(std::istream &input)
                     std::cerr << "Reads names should end in /1 or /2" << std::endl;
                     std::exit(EXIT_FAILURE);
                 }
-
+                read_s2 = true;
                 n = 2;
             }
             else
             {
-                std::cerr << "Reads names should end in /1 or /2" << std::endl;
+                std::cerr << "Malformed maf file" << std::endl;
                 std::exit(EXIT_FAILURE);
             }
+        }
+        else if (begin == 'q')
+        {
+            char type;
+            ss >> type >> qual ;
+            read_q = true;
         }
         else if (begin == 'p')
         {
             char type;
             ss >> type >> prob;
+            if (!(read_a && read_s1 && read_s2))
+            {
+                std::cerr << "Malformed maf file" << std::endl;
+                std::exit(EXIT_FAILURE);
+            }
+            break;
         }
+        
     }
+    
     Alignment aln;
     aln.score = score;
     aln.qName = qName;
@@ -233,8 +254,9 @@ static Alignment readSingleAlignment(std::istream &input)
     aln.qSeq = qSeq;
     aln.rSeq = rSeq;
     aln.prob = prob;
-
+    if (read_q) aln.qual = qual ;
     return aln;
+    
 }
 
 void outputInSAM(const std::vector<Alignment> &X, const std::vector<Alignment> &Y,
@@ -364,8 +386,7 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
     std::vector<std::vector<AlignmentPair>> alnprobs(X[0].qSrcSize, std::vector<AlignmentPair>(X.size()));
 
    
-    const long NOALIGN = -1;
-    const long GAP = -2;
+    
     const double LOG0 = -1.0e99;
     
     //construct query position to alignment column map
@@ -570,6 +591,8 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
                 p_Hj_y[j] = std::exp(log_p_y_Hj[j] + log_p_Hj[j] - Z);
             }
         }
+        
+        
         for (size_t aln = 0; aln < X.size(); ++aln)
         {
             alnprobs[qPos][aln].rName = X[aln].rName;
@@ -611,10 +634,12 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
     return alnprobs;
 }
 
-std::vector<AlignmentPair> chooseBestPair(std::vector<std::vector<AlignmentPair>> readProbs, std::vector<AlignmentPair> &bestPairs)
+//std::vector<AlignmentPair>
+void chooseBestPair(std::vector<std::vector<AlignmentPair>> readProbs, std::vector<AlignmentPair> &bestPairs)
 {
     //std::vector<AlignmentPair> bestPairs;
     bestPairs.reserve(readProbs.size());
+    
 
     for (auto &pairs : readProbs)
     {
@@ -622,7 +647,7 @@ std::vector<AlignmentPair> chooseBestPair(std::vector<std::vector<AlignmentPair>
         int bestPair = -1;
         for (size_t i = 0; i < pairs.size(); ++i)
         {
-            if (pairs[i].probability > bestProb)
+            if ((pairs[i].rIndex != NOALIGN) && (pairs[i].probability > bestProb))
             {
                 bestProb = pairs[i].probability;
                 bestPair = i;
@@ -633,11 +658,14 @@ std::vector<AlignmentPair> chooseBestPair(std::vector<std::vector<AlignmentPair>
         } else { // if every pair probability is zero
             AlignmentPair e;
             e.probability = -1;
-            e.rName = "NO ALIGN";
+            e.rName = "-";
+            e.qName = readProbs[0][0].qName ;
+            e.rIndex = NOALIGN;
+            e.rStrand='-';
             bestPairs.push_back(e);
         }
     }
-    return bestPairs;
+    
 }
 
 void outputSAM(std::vector<AlignmentPair> read1Aln, std::vector<AlignmentPair> read2Aln)
@@ -747,15 +775,23 @@ void startSplitPEProcess(std::vector<Alignment> &alns1, std::vector<Alignment> &
         
     if (!alns1.empty())
     {
-        std::cout << "start calcProb" << std::endl; 
+        //std::cout << "start calcProb" << std::endl; 
         std::vector<std::vector<AlignmentPair>> read1Probs = calcProb(alns1, alns2, params, opts);
+        /*
+        for(auto& pos:read1Probs){
+            for(auto& pair:pos){
+                std::cout << pair.probability << ":" << pair.rIndex << ";\t" ; 
+            }
+            std::cout << std::endl;
+        }
+        */
         chooseBestPair(read1Probs,read1FinalAln);
         if (!opts.isSamFormat) outputNative(read1FinalAln);
     }
     
     if (!alns2.empty())
     {
-        std::cout << "start calcProb" << std::endl; 
+        //std::cout << "start calcProb" << std::endl; 
         std::vector<std::vector<AlignmentPair>> read2Probs = calcProb(alns2, alns1, params, opts);
         chooseBestPair(read2Probs,read2FinalAln);
         if (!opts.isSamFormat) outputNative(read2FinalAln);
@@ -809,7 +845,6 @@ void lastSplitPe(LastPairProbsOptions &opts)
     }
     while (true)
     {
-        //std::cout << currentAln.qName << " " << currentAln.qNameNoPair << " " << currentAln.qPairName << std::endl;
         if (currentAln.qPairName == "1") {
             X.push_back(currentAln);
         } else {
@@ -817,18 +852,15 @@ void lastSplitPe(LastPairProbsOptions &opts)
         }
 
         Alignment nextAln = readSingleAlignment(input);
-
         if (nextAln.qName != "")
         {  //some alignment was read
             if (currentAln.qNameNoPair == nextAln.qNameNoPair)
             {   //either same read OR same pair
-                //std::cout << "same pair" << std::endl;
                 currentAln = nextAln;
                 continue;
             }
             else
             {   //different pair
-                //std::cout << "different pair" << std::endl;
                 startSplitPEProcess(X, Y, params, opts);
                 currentAln = nextAln;
                 X.clear();
@@ -838,9 +870,7 @@ void lastSplitPe(LastPairProbsOptions &opts)
         }
         else
         {   // readSingleAlignment didn't read in alignment because of EOF or other reasons.
-            //std::cout << "start!" << std::endl;
             startSplitPEProcess(X, Y, params, opts);
-            //std::cout << "EOF" << std::endl;
             break;
         }
     }
