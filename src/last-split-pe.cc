@@ -129,6 +129,15 @@ struct AlignmentPair
     double probability;
 };
 
+struct SAMaln //stores information for one line of SAM of a read, minus alignment info of its mate 
+{
+    std::string qNameNoPair, refName, querySeq, cigar;
+    long refStartPos;
+    char queryStrand;
+    bool isSupplementary,isFirst;
+    double bestProb;
+};
+
 static AlignmentParameters readHeaderOrDie(std::istream &lines)
 {
     std::string line;
@@ -257,47 +266,6 @@ static Alignment readSingleAlignment(std::istream &input)
     if (read_q) aln.qual = qual ;
     return aln;
     
-}
-
-void outputInSAM(const std::string qNameNoPair,
-                 const std::string &refName, const long alnPos, const char qStrand, const size_t querySize , const size_t totalLength,
-                 const std::string &seq, std::stringstream &cigar, bool isSupplementary,
-                 bool isFirst , const std::vector<AlignmentPair> &Y)
-{
-    // output in SAM format
-    std::bitset<12> flag;
-    flag.set(0, true);  // template having multiple segments in sequencing
-    flag.set(1, false); // each segment properly aligned according to the aligner
-    flag.set(2, false); // segment unmapped
-    flag.set(3, false); // next segment in the template unmapped
-
-    flag.set(4, qStrand == '-'); // SEQ being reverse complemented
-    // What if some strand is '+'??
-    // SEQ of the next segment in the template being reverse complemented
-    // TODO: What if there are several alignments in Y?
-    //flag.set(5, Y[0].qStrand == '-' ? true : false);
-    flag.set(5,false); //TODO
-    flag.set(6, isFirst);          // the first segment in the template
-    flag.set(7, !isFirst);         // the last segment in the template
-    flag.set(8, false);            // secondary alignment
-    flag.set(9, false);            // not passing filters, such as platform/vendor quality controls
-    flag.set(10, false);           // PCR or optical duplicate
-    flag.set(11, isSupplementary); // supplementary alignment
-
-
-    if (totalLength < querySize)
-        cigar << querySize - totalLength << "H";
-    std::cout << qNameNoPair << '\t'           // QNAME
-              << flag.to_ulong() << '\t' // FLAG
-              << refName << '\t'         // RNAME
-              << alnPos + 1 << '\t'      // RPOS
-              << 255 << '\t'             // MAPQ (unavailable)
-              << cigar.str() << '\t'     // CIGAR
-              << '*' << '\t'             // RNEXT (unavailable)
-              << 0 << '\t'               // PNEXT (unavailable)
-              << 0 << '\t'               // TLEN (unavailable)
-              << seq << '\t'             // SEQ
-              << '*' << std::endl;       // QUAL (unavailable)
 }
 
 /*
@@ -598,8 +566,8 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
             alnprobs[qPos][aln].qIndex = qPos;
             alnprobs[qPos][aln].qStrand = X[aln].qStrand;
             alnprobs[qPos][aln].rStrand = X[aln].rStrand;
-            
             alnprobs[qPos][aln].qBase = X[aln].qSeq[qPos2AlnCol[aln][qPos]];
+            
             if (qPos2AlnCol[aln][qPos] != NOALIGN)
             {
                 //alnprobs[qPos][n].rBase = X[n].rSeq[rPosWithGap[n] - X[n].rStart];
@@ -655,20 +623,317 @@ void chooseBestPair(const std::vector<std::vector<AlignmentPair>> &readProbs, st
         }
         if(bestPair != -1) {
             bestPairs.push_back(pairs[bestPair]);
-        } else { // if every pair probability is zero
+        } else { // if every pair was NOALIGN, any one will do
+            bestPairs.push_back(pairs[0]); 
+            /*
             AlignmentPair e;
             e.probability = -1;
             e.rName = "-";
             e.qName = readProbs[0][0].qName ;
             e.rIndex = NOALIGN;
-            e.rStrand='-';
+            e.rStrand='x';
+            e.qBase = pairs[i].qBase;
             bestPairs.push_back(e);
+            */
         }
     }
     
 }
 
-void outputSAM(const std::string qNameNoPair, const std::vector<AlignmentPair> &alnpair, const std::vector<AlignmentPair> &mateAlnPair, 
+/*
+void outputInSAM(const std::string qNameNoPair,
+                 const std::string &refName, const long alnPos, const char qStrand, 
+                 const std::string &seq, std::stringstream &cigar, bool isSupplementary,
+                 bool isFirst , const std::vector<AlignmentPair> &Y)
+{
+    // output in SAM format
+    std::bitset<12> flag;
+    flag.set(0, true);  // template having multiple segments in sequencing
+    flag.set(1, false); // each segment properly aligned according to the aligner
+    flag.set(2, false); // segment unmapped
+    flag.set(3, false); // next segment in the template unmapped
+
+    flag.set(4, qStrand == '-'); // SEQ being reverse complemented
+    // What if some strand is '+'??
+    // SEQ of the next segment in the template being reverse complemented
+    // TODO: What if there are several alignments in Y?
+    //flag.set(5, Y[0].qStrand == '-' ? true : false);
+    flag.set(5,false); //TODO
+    flag.set(6, isFirst);          // the first segment in the template
+    flag.set(7, !isFirst);         // the last segment in the template
+    flag.set(8, false);            // secondary alignment
+    flag.set(9, false);            // not passing filters, such as platform/vendor quality controls
+    flag.set(10, false);           // PCR or optical duplicate
+    flag.set(11, isSupplementary); // supplementary alignment
+
+   
+    std::cout << qNameNoPair << '\t'     // QNAME
+              << flag.to_ulong() << '\t' // FLAG
+              << refName << '\t'         // RNAME
+              << alnPos + 1 << '\t'      // RPOS
+              << 255 << '\t'             // MAPQ (unavailable)
+              << cigar.str() << '\t'     // CIGAR
+              << '*' << '\t'             // RNEXT (unavailable)
+              << 0 << '\t'               // PNEXT (unavailable)
+              << 0 << '\t'               // TLEN (unavailable)
+              << seq << '\t'             // SEQ
+              << '*' << std::endl;       // QUAL (unavailable)
+}
+*/
+
+
+
+void writeSAMoutput(const SAMaln &readSAM,  
+                    const std::string &rnext, const long &pnext, const bool &nextSegmentUnmapped, const bool &nextSegmentRevComp)
+{
+    // output in SAM format
+    std::bitset<12> flag;
+    flag.set(0, true);  // template having multiple segments in sequencing
+    flag.set(1, false); // each segment properly aligned according to the aligner
+    flag.set(2, false); // segment unmapped
+    flag.set(3, nextSegmentUnmapped); // next segment in the template unmapped
+    flag.set(4, readSAM.queryStrand == '-'); // SEQ being reverse complemented
+    flag.set(5, nextSegmentRevComp); //TODO
+    flag.set(6, readSAM.isFirst);          // the first segment in the template
+    flag.set(7, !readSAM.isFirst);         // the last segment in the template
+    flag.set(8, false);            // secondary alignment
+    flag.set(9, false);            // not passing filters, such as platform/vendor quality controls
+    flag.set(10, false);           // PCR or optical duplicate
+    flag.set(11, readSAM.isSupplementary); // supplementary alignment
+
+   
+    std::cout << readSAM.qNameNoPair << '\t'     // QNAME
+              << flag.to_ulong() << '\t' // FLAG
+              << readSAM.refName << '\t'         // RNAME
+              << readSAM.refStartPos << '\t'      // RPOS
+              << 255 << '\t'             // MAPQ TODO
+              << readSAM.cigar << '\t'     // CIGAR
+              << rnext << '\t'             // RNEXT (unavailable)
+              << pnext << '\t'               // PNEXT (unavailable)
+              << 0 << '\t'               // TLEN (unavailable)
+              << readSAM.querySeq << '\t'             // SEQ
+              << '*' << std::endl;       // QUAL (unavailable)
+}
+
+
+
+void buildSAM(const std::string &qNameNoPair, std::vector<AlignmentPair> &alnPair, // no const as we add a dummy aln
+               const AlignmentParameters &params,  std::vector<SAMaln> &samStructVec, const bool isFirst)
+{
+    
+    if (alnPair.empty()) return ;
+    
+    //alnPair[i].index can be one of followng: (1)some actual ref position or (2) NOALIGN or (3)GAP
+    //logic in this function flows based on these cases
+    long a = params.aGet();
+    long b = params.bGet();
+    long x = params.xGet();
+    
+    //since we need to look ahead in alnpair to make decisions, the loop is cleaner with a dummy alignment at the tail end 
+    AlignmentPair dummy;
+    dummy.rIndex = NOALIGN;
+    alnPair.push_back(dummy);
+    
+    bool isSupplementary=false;
+
+    size_t idx = 0; //position along alnpair 
+    while(idx < alnPair.size()-2) 
+    {
+        //start new alignment segment
+        
+        //alignment segments must start with "M"
+        if(alnPair[idx].rIndex == NOALIGN || alnPair[idx].rIndex == GAP ) //\label{getToFirstM}
+        {
+            idx++ ;
+            continue;
+        }
+        
+        //entering actual segment
+        long refStartPos = alnPair[idx].rIndex; 
+        long queryStartPos = idx;
+        std::string refName = alnPair[idx].rName;
+        char queryStrand = alnPair[idx].qStrand;
+        std::string querySeq="";
+        std::vector<std::string> preCigar; // e.g. cigar 4M2D3M is represented as  preCigar [M,M,M,M,D,D,M,M,M]. this allows cleaner looping
+        size_t i = idx; //iterator for this new alignment segment. what to do with pos i depends on what we can see at i+1. 
+        while(i < alnPair.size()-2) 
+        {   
+            preCigar.push_back("M") ; 
+            // At this point, we will always be at an M position. Because:
+            // If we are entering first time as new segment, we can't be at NOALIGN or GAP because of \cite{getToFirstM} above.
+            // If we are here because of looping inside the same segment, we can't be at GAP because of \label{conditionGAP} below, 
+            // and we don't allow same segment if we encountered NOALIGN.
+            querySeq += alnPair[i].qBase;
+            
+            if (alnPair[i+1].rIndex != GAP && alnPair[i+1].rIndex != NOALIGN )
+            {
+                if (alnPair[i].rName == alnPair[i+1].rName &&
+                    alnPair[i].rStrand == alnPair[i+1].rStrand) 
+                {
+                    auto refIndexDiff = alnPair[i+1].rIndex-alnPair[i].rIndex;
+                    
+                    if(refIndexDiff == 1) 
+                    {
+                        i++;
+                        continue; //same segment
+                    }
+                    else if(a + b*refIndexDiff < x)
+                    {
+                        for(int j=1; j<refIndexDiff; j++)
+                            preCigar.push_back("D");
+                        i++;
+                        continue; //same segment
+                    }
+                    else // very large deletion, or some arrangment that alters left-to-right order
+                    {
+                        i++;
+                        break; //new segment
+                    }
+                   
+                }
+                else{ //different chr, or different strand
+                    i++;
+                    break; //new segment
+                }
+            }
+            else if (alnPair[i+1].rIndex == GAP) //\label{conditionGAP}
+            {
+                auto k = i; //remember where we started
+                while( alnPair[i+1].rIndex != GAP) // contiguous GAPs?  can't overshoot alnpair because of NOALIGN dummy alignment at the end
+                {
+                    i++;
+                }
+                // i  now points to the next non-GAP position
+                if (alnPair[i].rIndex == NOALIGN) break; // no need for i++ as we are already there.                
+                if (alnPair[i].rIndex-alnPair[k].rIndex==1) //i points an M position. is this is an insertion?
+                {
+                    for (int m=1; m<i-k ; m++)
+                    {
+                        preCigar.push_back("I");
+                    }
+                    
+                    continue; //same segment. no need for i++ as we are already there.
+                } 
+                else
+                { //not an insertion. maybe those infamous insertion plus deletion. 
+                    break; //new segment. no need for i++ as we are already there.
+                }
+            }
+            else if (alnPair[i+1].rIndex == NOALIGN) // condition checking not required, but explicit is better than implicit.
+            {
+                i++;
+                break;
+            }
+            
+        }
+        //exiting alignmentSegment. gather what we have so far, and add to samStructVec
+        //compose cigar
+        std::stringstream cigar;
+        cigar << queryStartPos << "H" ;
+        
+        std::string currentState = preCigar[0];
+        int length=0;
+        for (auto &state:preCigar)
+        {
+            
+            if (currentState == state)
+            {
+                length++;
+                continue;
+            }
+            else
+            {
+                cigar << length << currentState;
+                length = 0;
+                currentState = state;
+            }
+        }
+        cigar << length << currentState;
+        cigar << alnPair.size()-i << "H";
+        
+        //get best prob
+        
+
+        //construct tempSAM struct and add to vector
+        SAMaln tempSAM;
+        tempSAM.bestProb = 0.001 ; //TODO
+        tempSAM.cigar = cigar.str();
+        tempSAM.isFirst = isFirst;
+        tempSAM.isSupplementary = isSupplementary;
+        tempSAM.qNameNoPair = qNameNoPair;
+        tempSAM.querySeq = querySeq;
+        tempSAM.queryStrand = queryStrand;
+        tempSAM.refName = refName;
+        tempSAM.refStartPos = refStartPos+1; //SAM is 1-based 
+        
+        samStructVec.push_back(tempSAM);
+        
+        
+        //prepare for next round
+        isSupplementary = true; //any alignment segment that might come next is supplementary 
+        idx = i; //starting position for the next segment
+    }
+}
+
+void getMateInfo(const std::vector<SAMaln> &readSAMs, const std::vector<SAMaln> &mateSAMs, 
+                  std::string &rnext, long &pnext, bool &nextSegmentUnmapped, bool &nextSegmentRevComp)
+{
+    //default values
+    rnext="*"; 
+    pnext=0;
+    nextSegmentUnmapped = false;
+    nextSegmentRevComp = false;
+    
+    if (mateSAMs.empty()) nextSegmentUnmapped = true;
+    else if (mateSAMs.size() == 1) // not sure what to do if mate is split into multiple segments
+    {
+        if (readSAMs.size() == 1) //for now, insist that read also has single alignment only
+        { 
+            if (readSAMs[0].refName == mateSAMs[0].refName) rnext = "=";
+            else rnext = mateSAMs[0].refName;
+            pnext = mateSAMs[0].refStartPos;
+        }
+        if (mateSAMs[0].queryStrand == '-')
+        {
+            nextSegmentRevComp = true;
+        }
+    }
+}
+
+void outputSAM(const std::string qNameNoPair, std::vector<AlignmentPair> &read1AlnPair, std::vector<AlignmentPair> &read2AlnPair, 
+               const AlignmentParameters &params)
+               
+{   
+    std::vector<SAMaln> read1SAMs;
+    std::vector<SAMaln> read2SAMs;
+    
+    buildSAM(qNameNoPair, read1AlnPair, params, read1SAMs, true);
+    buildSAM(qNameNoPair, read2AlnPair, params, read2SAMs, false);
+       
+    //add mate info 
+    std::string rnext; 
+    long pnext;
+    bool nextSegmentUnmapped;
+    bool nextSegmentRevComp;
+    //for first ..
+    getMateInfo(read1SAMs,read2SAMs,rnext,pnext,nextSegmentUnmapped,nextSegmentRevComp);
+    //and output ..
+    for (auto &samLine: read1SAMs)
+    {
+        writeSAMoutput(samLine,rnext,pnext,nextSegmentUnmapped,nextSegmentRevComp);
+    }
+    //for second ..
+    getMateInfo(read2SAMs,read1SAMs,rnext,pnext,nextSegmentUnmapped,nextSegmentRevComp);
+    //and output ..
+    for (auto &samLine: read2SAMs)
+    {
+        writeSAMoutput(samLine,rnext,pnext,nextSegmentUnmapped,nextSegmentRevComp);
+    }
+}
+               
+               
+/*
+void outputSAMold(const std::string qNameNoPair, const std::vector<AlignmentPair> &alnpair, const std::vector<AlignmentPair> &mateAlnPair, 
                const AlignmentParameters &params, const bool isFirst)
 {
    
@@ -687,7 +952,7 @@ void outputSAM(const std::string qNameNoPair, const std::vector<AlignmentPair> &
         // if match, start one alignment
         if(alnpair[idx-1].rName == alnpair[idx].rName &&
            alnpair[idx-1].rIndex == alnpair[idx].rIndex - 1 &&
-           alnpair[idx-1].rStrand == alnpair[idx].rStrand) 
+           alnpair[idx-1].rStrand == alnpair[idx].rStrand) // else is weak
         {
             
             size_t totalLength = 0;
@@ -707,7 +972,7 @@ void outputSAM(const std::string qNameNoPair, const std::vector<AlignmentPair> &
                 if(alnpair[i-1].rName == alnpair[i].rName &&
                    alnpair[i-1].rStrand == alnpair[i].rStrand) 
                 {
-                    //TODO check for small insertions in this block
+                    
                     auto refIndexDiff = alnpair[i].rIndex-alnpair[i-1].rIndex;
                     if(refIndexDiff == 1) 
                     {
@@ -769,6 +1034,7 @@ void outputSAM(const std::string qNameNoPair, const std::vector<AlignmentPair> &
         }
     }
 } 
+*/
    
 void outputNative(std::vector<AlignmentPair> readAln)
 {
@@ -816,9 +1082,7 @@ void startSplitPEProcess(const std::string readNameNoPair, std::vector<Alignment
     
     if (opts.isSamFormat)
     {
-        
-        outputSAM(readNameNoPair,read1FinalAln, read2FinalAln, params, true); //TODO make sure outputSAM() checks if one of the vectors is empty.
-        outputSAM(readNameNoPair,read2FinalAln, read1FinalAln, params, false);
+        outputSAM(readNameNoPair,read1FinalAln, read2FinalAln, params);
     }
     /*
     //std::cout << "start calcProb" << std::endl;
