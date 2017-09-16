@@ -20,6 +20,7 @@
 const long NOALIGN = -1;
 const long GAP = -2;
 const double LOG0 = -1.0e99;
+const double probZero = 1.0e-10;
 
 static void err(const std::string &s)
 {
@@ -349,9 +350,6 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
     // vector to store result
     std::vector<std::vector<AlignmentPair>> alnprobs(X[0].qSrcSize, std::vector<AlignmentPair>(X.size()));
 
-   
-    
-    
     
     //construct query position to alignment column map
     std::vector<std::vector<long>> qPos2AlnCol(X.size(),std::vector<long>(X[0].qSrcSize,NOALIGN)); //long is overkill, but for consistency
@@ -488,24 +486,40 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
                 
                 //char c = X[aln].prob[rPosWithGap[aln] - X[aln].rStart]; 
                 char c = X[aln].prob[qPos2AlnCol[aln][qPos]];
-                double p = 1.0 - std::pow(10.0, -((c - 33) / 10.0));
+                double p = 1.0 - std::pow(10.0, -((c - 32) / 10.0)); 
                 log_p_Hj[aln] = std::log(p);
                 p_Hj_y[aln] = p ; //initialize posterior = prior.
                 p_R += p;
-                               
+                
             }
         }
+        /*
+        //checking prior probs
+        std::cout << "Prior probs" << std::endl;
+        for (size_t aln = 0; aln < X.size(); ++aln)
+        {
+            std::cout << std::exp(log_p_Hj[aln]) << "\t" ; 
+        }
+        std::cout << std::endl;
+        std::cout << "p_R:" << p_R << std::endl;
+        */
+        
         if ( p_R > 1 ) p_R = 1; //not sure how LAST discretizes its probability
         
         //if i_j[aln] == GAP for one of the alns, we don't know what to do, yet.
         bool oneGAP = false;
         for (size_t aln = 0; aln < X.size(); ++aln)
         {
-            if (i_j[aln] == GAP) oneGAP = true;
+            if (i_j[aln] == GAP) 
+            {
+                oneGAP = true;
+                break;
+            }
         }
         
         if (!(X.size() == 1 || Y.empty() || oneGAP)) //update probabilities only if need be. makes code faster(?). last condition is TODO
         {   
+            //std::cout << "updating probs" << std::endl;
             for (size_t aln = 0; aln < X.size(); ++aln)
             {
                 // conditional probability p(Y_k | H_j)
@@ -556,6 +570,15 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
             }
         }
         
+        /*
+        //verifying posterior
+        //std::cout <<"Checking unscaled posterior" << std::endl;
+        for (size_t aln = 0; aln < X.size(); ++aln)
+        {
+            std::cout <<  p_Hj_y[aln] << "\t" ; 
+        }
+        std::cout << std::endl;
+        */
         
         for (size_t aln = 0; aln < X.size(); ++aln)
         {
@@ -742,7 +765,7 @@ void buildSAM(const std::string &qNameNoPair, std::vector<AlignmentPair> &alnPai
     size_t idx = 0; //position along alnpair 
     while(idx < alnPair.size()-1) 
     {
-        //start new alignment segment
+        //start new alignment segment (i.e. alignment corresponding to one SAM line)
         if (verbose) std::cout << "starting new segment at qPos: " << idx << std::endl;
         
         //alignment segments must start with "M"
@@ -895,7 +918,8 @@ void buildSAM(const std::string &qNameNoPair, std::vector<AlignmentPair> &alnPai
         if (verbose) std::cout << std::endl;
         assert(bestProb > 0.0);
         double errProb = 1 - bestProb ; 
-        if (errProb == 0) errProb = LOG0;
+        if (errProb == 0) errProb = probZero;
+        if (verbose) std::cout << "Errprob" << errProb << std::endl;
         
 
         //construct tempSAM struct and add to vector
