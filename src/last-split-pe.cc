@@ -351,18 +351,22 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
     std::vector<std::vector<AlignmentPair>> alnprobs(X[0].qSrcSize, std::vector<AlignmentPair>(X.size()));
 
     
-    //construct query position to alignment column map
+    //construct query position to alignment column map. 
+    //query position refers to position in actual read. for -ve strand alignments, we need to be careful.
     std::vector<std::vector<long>> qPos2AlnCol(X.size(),std::vector<long>(X[0].qSrcSize,NOALIGN)); //long is overkill, but for consistency
     for (size_t aln = 0; aln < X.size(); ++aln)
     {
-       auto queryPos = X[aln].qStart;
-       auto querySeq = X[aln].qSeq;
-       for(long alnColPos=0; alnColPos < querySeq.length(); alnColPos++) // querySeq.length() gives alignment size. 
-       {
+        auto queryStrand = X[aln].qStrand;
+        auto queryPosInAln = X[aln].qStart; //caution: if qStrand is '-', this will not reflect the actual position on the query.
+        auto querySeq = X[aln].qSeq;
+       
+        for(long alnColPos=0; alnColPos < querySeq.length(); alnColPos++) // querySeq.length() gives alignment size. 
+        {
             if (querySeq[alnColPos] != '-')
             {
-                qPos2AlnCol[aln][queryPos] = alnColPos;
-                queryPos++;
+                if (queryStrand == '+') qPos2AlnCol[aln][queryPosInAln] = alnColPos; //queryPosInAln is same as queryPosition
+                else qPos2AlnCol[aln][X[0].qSrcSize-1-queryPosInAln] = alnColPos; //queryPos needs to be computed from queryPosInAln 
+                queryPosInAln++;
             }
         }
            
@@ -530,11 +534,19 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
                     int flag_len = -1;
                     if (X[aln].qStrand == '+' && Y[k].qStrand == '-')
                     {
-                        flag_len = (qPos - X[aln].qStart - 1) + (Y[k].rStart - i_j[aln] + 1) + Y[k].qSrcSize;
+                        //flag_len = (qPos - X[aln].qStart - 1) + (Y[k].rStart - i_j[aln] + 1) + Y[k].qSrcSize;
+                        flag_len =    qPos + (Y[k].rStart - i_j[aln] + 1) + (Y[k].qSrcSize - Y[k].qStart-1) ; 
+                        //            (a)  +           (b)                +  (c)  
+                        //  (a): length of 5'-end portion before qPos,  
+                        //  (b): distance on reference  between mapped position of qPos and the start of local alignment Y[k] of mate
+                        //  (c): length of remaining portion of mate, starting from Y[k].qStart
+                        //is this correct? or the one above?
+                        
                     }
-                    else if (X[aln].qStrand == '+' && Y[k].qStrand == '-')
+                    else if (X[aln].qStrand == '-' && Y[k].qStrand == '+')
                     {
-                        flag_len = i_j[aln] - Y[k].rStart + i_j[aln] + X[aln].qSrcSize - (qPos - X[aln].qStart - 1);
+                        //flag_len = i_j[aln] - Y[k].rStart + i_j[aln] + X[aln].qSrcSize - (qPos - X[aln].qStart - 1); // this looks wrong because i_j appears twice 
+                        flag_len = qPos + (i_j[aln] - Y[k].rStart+1) + Y[k].qStart  ;
                     }
                     // TODO: What if other cases??
     
