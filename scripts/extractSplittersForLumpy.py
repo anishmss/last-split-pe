@@ -3,8 +3,14 @@
 import argparse
 from itertools import groupby
 
+def filterAndPrintHeader(fileHandle):
+    for line in fileHandle:
+        if line.startswith("@"): # not nice that we have to check this for every line
+            print line.rstrip()
+        else: yield line
+
 def samReadAlnsGen(fileHandle): #returns all alignments of one read
-    for k,samLines in groupby(fileHandle, lambda x : (x.split()[0],int(x.split()[1])&64)):
+    for k,samLines in groupby(filterAndPrintHeader(fileHandle), lambda x : (x.split()[0],int(x.split()[1])&64)):
         yield samLines #creates empty list whenever there is a switch
 
 
