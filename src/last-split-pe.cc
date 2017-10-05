@@ -764,6 +764,7 @@ void buildSAMsegmentPlus(size_t &i, const std::string &qNameNoPair, std::vector<
     long refStartPos = alnPair[i].rIndex; 
     //long refEndPos=refStartPos; //the last ref position in this SAM line. (needed for - strand alignments)
     long queryStartPos = i;
+    long queryEndPos = queryStartPos;
     std::string refName = alnPair[i].rName;
     char queryStrand = alnPair[i].qStrand;
     std::string querySeq="";
@@ -778,6 +779,7 @@ void buildSAMsegmentPlus(size_t &i, const std::string &qNameNoPair, std::vector<
         // and we don't allow same segment if we encountered NOALIGN.
         //refEndPos = alnPair[i].rIndex;
         querySeq += alnPair[i].qBase;
+        queryEndPos = i;
         
         if (alnPair[i+1].rIndex != GAP && alnPair[i+1].rIndex != NOALIGN )
         {
@@ -872,7 +874,7 @@ void buildSAMsegmentPlus(size_t &i, const std::string &qNameNoPair, std::vector<
     //get error prob among alignment columns of this segment
     double bestProb = 0.0 ;
     if (verbose) std::cout << "Column probabilities" << std::endl;
-    for (size_t r = queryStartPos; r < i ; r++ )
+    for (size_t r = queryStartPos; r <= queryEndPos ; r++ )
     {
         if (verbose) std::cout << alnPair[r].probability << std::endl; 
         if (alnPair[r].probability > bestProb) bestProb = alnPair[r].probability;
@@ -903,9 +905,9 @@ void buildSAMsegmentPlus(size_t &i, const std::string &qNameNoPair, std::vector<
         }
     }
     cigar << length << currentState;
-    if (i < alnPair.size()-1 )  //remember dummy align at end?
+    if (queryEndPos < alnPair.size()-2 )  //-2 because of dummy align at end
     {
-        cigar << alnPair.size()-i-1 << "H";
+        cigar << alnPair.size()-2-queryEndPos << "H";
     }
 
     tempSAM.cigar = cigar.str();
@@ -930,7 +932,7 @@ void buildSAMsegmentMinus(size_t &i, const std::string &qNameNoPair, std::vector
                          const long &a, const long &b, const long &x, 
                          const bool &isFirst, const bool &isSupplementary, const bool &verbose)
 {
-    if (verbose) std::cout << "inside buildSAMsegmentNegative" << std::endl;
+    if (verbose) std::cout << "inside buildSAMsegmentMinus" << std::endl;
     
     //entering actual segment
     long refStartPos = alnPair[i].rIndex; 
@@ -941,7 +943,9 @@ void buildSAMsegmentMinus(size_t &i, const std::string &qNameNoPair, std::vector
     char queryStrand = alnPair[i].qStrand;
     std::string querySeq="";
     std::vector<std::string> preCigar; // e.g. cigar 4M2D3M is represented as  preCigar [M,M,M,M,D,D,M,M,M]. this allows cleaner looping
-    while(i < alnPair.size()-1) // looping inside this SAM line. only the final exit condition is stated here. follow the explicit breaks and continues.
+    
+ 
+    while(i < alnPair.size()-1) // looping inside this SAM line. only the final exit condition is stated here. to understand logic, follow the explicit breaks and continues .
     {   
         
         preCigar.push_back("M") ; 
@@ -989,6 +993,7 @@ void buildSAMsegmentMinus(size_t &i, const std::string &qNameNoPair, std::vector
         }
         else if (alnPair[i+1].rIndex == GAP) //\label{conditionGAP}
         {
+            //now we need to look forward until the end of the gap to decide what to do
             if(verbose) std::cout << "at pos" << i+1 << ": GAP" << std::endl;
             auto gapStart = i+1; //remember GAP start position
             while( alnPair[i+1].rIndex == GAP) // contiguous GAPs?  can't overshoot alnpair because of NOALIGN dummy alignment at the end
@@ -1029,8 +1034,8 @@ void buildSAMsegmentMinus(size_t &i, const std::string &qNameNoPair, std::vector
         }
         
     }
-    //exiting SAMSegment. i points to start of next segment 
-    
+    //exiting SAMSegment. i points to start of next segment.
+   
     //gather what we have so far, create a SAMaln struct,  and add to samStructVec
     SAMaln tempSAM;     
     if (verbose) 
@@ -1047,7 +1052,7 @@ void buildSAMsegmentMinus(size_t &i, const std::string &qNameNoPair, std::vector
     //get error prob among alignment columns of this segment
     double bestProb = 0.0 ;
     if (verbose) std::cout << "Column probabilities" << std::endl;
-    for (size_t r = queryStartPos; r < i ; r++ )
+    for (size_t r = queryStartPos; r <= queryEndPos ; r++ )
     {
         if (verbose) std::cout << alnPair[r].probability << std::endl; 
         if (alnPair[r].probability > bestProb) bestProb = alnPair[r].probability;
@@ -1061,9 +1066,9 @@ void buildSAMsegmentMinus(size_t &i, const std::string &qNameNoPair, std::vector
     
     //cigar string . because reverse strand. we have to reverse-iterate
     std::stringstream cigar;
-    if (i < alnPair.size()-1 )  //remember dummy align at end?
+    if (queryEndPos < alnPair.size()-2 )  //-2  because of dummy align at end
     {
-        cigar << alnPair.size()-i-1 << "H";
+        cigar << alnPair.size()-2-queryEndPos << "H";
     }
             
     std::string currentState = preCigar.back();
