@@ -789,12 +789,13 @@ void buildSAMsegmentPlus(size_t &i, const std::string &qNameNoPair, std::vector<
             {
                 if (verbose) std::cout << "sub-case: same chr, same strand" << std::endl;
                 auto refIndexDiff = alnPair[i+1].rIndex-alnPair[i].rIndex;
+                if (verbose) std::cout << "refIndexDiff: " << refIndexDiff << std::endl;
                 if(refIndexDiff == 1) 
                 {
                     i++;
                     continue; //same segment
                 }
-                else if(a + b*refIndexDiff < x)
+                else if((refIndexDiff > 0) && (a + b*refIndexDiff < x))
                 {
                     for(int j=1; j<refIndexDiff; j++)
                         preCigar.push_back("D");
@@ -971,7 +972,7 @@ void buildSAMsegmentMinus(size_t &i, const std::string &qNameNoPair, std::vector
                     i++;
                     continue; //same segment
                 }
-                else if(a + b*refIndexDiff < x)
+                else if((refIndexDiff > 0) && (a + b*refIndexDiff < x))
                 {
                     for(int j=1; j<refIndexDiff; j++)
                         preCigar.push_back("D");
