@@ -271,73 +271,8 @@ static Alignment readSingleAlignment(std::istream &input)
     
 }
 
-/*
-void outputAlignmentSam(const std::vector<Alignment> &X, const std::vector<Alignment> &Y,
-                        bool isFirst)
-{
-    assert(X.size() == 1);
-    std::bitset<12> flag;
-    // template having multiple segments in sequencing
-    flag.set(0, true);
-    // each segment properly aligned according to the aligner
-    flag.set(1, false);
-    // segment unmapped
-    flag.set(2, false);
-    // next segment in the template unmapped
-    flag.set(3, false);
-    // SEQ being reverse complemented
-    flag.set(4, X[0].qStrand == '-');
-    // SEQ of the next segment in the template being reverse complemented
-    flag.set(5, Y[0].qStrand == '-' ? true : false);
-    // the first segment in the template
-    flag.set(6, isFirst);
-    // the last segment in the template
-    flag.set(7, !isFirst);
-    // secondary alignment
-    flag.set(8, false);
-    // not passing filters, such as platform/vendor quality controls
-    flag.set(9, false);
-    // PCR or optical duplicate
-    flag.set(10, false);
-    // supplementary alignment
-    flag.set(11, false);
-
-    double prob = 0.0;
-    for (size_t i = 0; i < X.size(); ++i)
-    {
-        char c = X[0].prob[i];
-
-        // http://last.cbrc.jp/doc/last-split.html
-        prob = std::max(prob, 1.0 - std::pow(10.0, -((c - 33 + 1) / 10.0))); // +1 is for lower bound
-    }
-
-    auto LastTwo = X[0].qName.substr(X[0].qName.length() - 2);
-    std::string qName;
-    if (LastTwo == "/1" || LastTwo == "/2")
-    {
-        qName = X[0].qName.substr(0, X[0].qName.length() - 2);
-    }
-    else
-    {
-        qName = X[0].qName;
-    }
-
-    std::cout << qName << '\t'                                    // QNAME
-              << flag.to_ulong() << '\t'                          // FLAG
-              << X[0].rName << '\t'                               // RNAME
-              << X[0].rStart + 1 << '\t'                          // RPOS (since sam is 1-indexed, we need +1)
-              << static_cast<int>(-10 * std::log10(prob)) << '\t' // MAPQ (TODO log of the probability of most reliable pair)
-              << X[0].qSeq.size() << 'M' << '\t'                  // CIGAR
-              << '=' << '\t'                                      // RNEXT (same, TODO: implement appropriately)
-              << Y[0].rStart + 1 << '\t'                          // PNEXT (unavailable)
-              << 0 << '\t'                                        // TLEN (unavailable)
-              << X[0].qSeq << '\t'                                // SEQ
-              << "*" << std::endl;                                // QUAL (unavailable)
-}
-*/
-
 std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std::vector<Alignment> &Y,
-                                                 AlignmentParameters &params, LastPairProbsOptions &opts)
+                                                 AlignmentParameters &params, LastPairProbsOptions &opts, bool verbose)
 {
     
     /*
@@ -370,7 +305,7 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
                 queryPosInAln++;
             }
         }
-           
+
     }
     
     /*
@@ -448,26 +383,13 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
 
     for (int qPos = 0; qPos < alnprobs.size(); ++qPos) 
     {   
-        //std::cout << "readPosition:" << qPos << ". " ;
+        if (verbose) std::cout << "readPosition:" << qPos << ": " << std::endl;
         // initialization
         std::fill(i_j.begin(), i_j.end(), NOALIGN);
         std::fill(log_p_Hj.begin(), log_p_Hj.end(), LOG0);
         std::fill(log_p_y_Hj.begin(), log_p_y_Hj.end(), LOG0);
         std::fill(p_Hj_y.begin(), p_Hj_y.end(), 0);
 
-        /*
-        for (size_t aln = 0; aln < X.size(); ++aln)
-        {
-            if (qPos == X[aln].qStart)
-            {
-                rPos[aln] = rPosWithGap[aln] = X[aln].rStart;
-            }
-            while (X[aln].qSeq[qPosWithGap[aln] - X[aln].qStart] == '-')
-            {
-                qPosWithGap[aln]++; // rPosWithGap should also move??
-            }
-        }
-        */
         
         //set up prior probability
         double p_R = 0.0; // sum of column probabilities across candidate alignments. updated below
@@ -491,26 +413,33 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
                 
                 //char c = X[aln].prob[rPosWithGap[aln] - X[aln].rStart]; 
                 char c = X[aln].prob[qPos2AlnCol[aln][qPos]];
-                double p = 1.0 - std::pow(10.0, -((c - 32) / 10.0)); 
+                double p = 1.0 - std::pow(10.0, -((c - 33) / 10.0)); 
                 log_p_Hj[aln] = std::log(p);
                 p_Hj_y[aln] = p ; //initialize posterior = prior.
                 p_R += p;
                 
             }
         }
-        /*
-        //checking prior probs
-        std::cout << "Prior probs" << std::endl;
-        for (size_t aln = 0; aln < X.size(); ++aln)
+        
+        if (verbose)
         {
-            std::cout << std::exp(log_p_Hj[aln]) << "\t" ; 
+        
+            //checking prior probs
+            std::cout << "Prior probs" << std::endl;
+            for (size_t aln = 0; aln < X.size(); ++aln)
+            {
+                std::cout << std::exp(log_p_Hj[aln]) << "\t" ; 
+            }
+            std::cout << std::endl;
+            std::cout << "p_R:" << p_R << std::endl;
+
         }
-        std::cout << std::endl;
-        std::cout << "p_R:" << p_R << std::endl;
-        */
         
-        if ( p_R > 1 ) p_R = 1.0; //not sure how LAST discretizes its probability
-        
+        if ( p_R > 1 ) 
+        {   
+            //TODO: first rescale the priors so that they add up to 1?
+            p_R = 1.0; //not sure how LAST discretizes its probability
+        }
         //if i_j[aln] == GAP for one of the alns, we don't know what to do, yet.
         bool oneGAP = false;
         for (size_t aln = 0; aln < X.size(); ++aln)
@@ -532,40 +461,57 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
                 {
                     
                     // estimate fragment length
-                    int flag_len = -1;
+                    int frag_len = -1;
                     if (X[aln].qStrand == '+' && Y[k].qStrand == '-')
                     {
-                        //flag_len = (qPos - X[aln].qStart - 1) + (Y[k].rStart - i_j[aln] + 1) + Y[k].qSrcSize;
-                        flag_len =    qPos + (Y[k].rStart - i_j[aln] + 1) + (Y[k].qSrcSize - Y[k].qStart-1) ; 
+                        //rlag_len = (qPos - X[aln].qStart - 1) + (Y[k].rStart - i_j[aln] + 1) + Y[k].qSrcSize;
+                        frag_len =    qPos + (Y[k].rStart - i_j[aln] + 1) + (Y[k].qSrcSize - Y[k].qStart-1) ; 
                         //            (a)  +           (b)                +  (c)  
                         //  (a): length of 5'-end portion before qPos,  
                         //  (b): distance on reference  between mapped position of qPos and the start of local alignment Y[k] of mate
                         //  (c): length of remaining portion of mate, starting from Y[k].qStart
                         //is this correct? or the one above?
+                        if (verbose) std::cout << "fragment length:" << frag_len << std::endl ;
                         
                     }
                     else if (X[aln].qStrand == '-' && Y[k].qStrand == '+')
                     {
-                        //flag_len = i_j[aln] - Y[k].rStart + i_j[aln] + X[aln].qSrcSize - (qPos - X[aln].qStart - 1); // this looks wrong because i_j appears twice 
-                        flag_len = qPos + (i_j[aln] - Y[k].rStart+1) + Y[k].qStart  ;
+                        //frag_len = i_j[aln] - Y[k].rStart + i_j[aln] + X[aln].qSrcSize - (qPos - X[aln].qStart - 1); // this looks wrong because i_j appears twice 
+                        frag_len = qPos + (i_j[aln] - Y[k].rStart+1) + Y[k].qStart  ;
+                        if (verbose) std::cout << "fragment length:" << frag_len << std::endl ;
                     }
                     // TODO: What if other cases??
     
                     // p(inferred |f|)
                     double log_pF = -1e99;
                     double pF = 0.0;
-                    if (flag_len > 0)
+                    if (frag_len > 0)
                     {
-                        pF = (1.0 / opts.sdev / std::sqrt(2.0 * M_PI)) * std::exp(-pow(flag_len - opts.fraglen, 2.0) / 2.0 / pow(opts.sdev, 2.0));
+                        pF = (1.0 / opts.sdev / std::sqrt(2.0 * M_PI)) * std::exp(-pow(frag_len - opts.fraglen, 2.0) / 2.0 / pow(opts.sdev, 2.0));
                         log_pF = std::log(pF);
+                        
+                        if (verbose) std::cout << "fragment prob: " << pF << std::endl;
                     }
                     // p(Y_k, I=0 | H_j)
                     log_p_y_Hj[aln] = logSumExp(log_p_y_Hj[aln], log_pF + Y[k].score / params.tGet() + std::log(1.0 - prob_disjoint));
                     // p(Y_k, I=1 | H_j)
+                    /*log_p_y_Hj[aln] = logSumExp(log_p_y_Hj[aln],
+                                                -std::log(2.0 * params.gGet()) + Y[k].score / params.tGet() / 2.0 + std::log(prob_disjoint));*/
                     log_p_y_Hj[aln] = logSumExp(log_p_y_Hj[aln],
-                                                -std::log(2.0 * params.gGet()) + Y[k].score / params.tGet() / 2.0 + std::log(prob_disjoint));
+                                                -std::log(2.0 * params.gGet()) + Y[k].score / params.tGet() + std::log(prob_disjoint)); // removing 2.0 in the second expression . why is it there?
                 }
             }
+            
+            if (verbose)
+            {
+                std::cout <<"Checking likelihood" << std::endl;
+                for (size_t aln = 0; aln < X.size(); ++aln)
+                {
+                    std::cout <<  log_p_y_Hj[aln] << "\t" ; 
+                }
+                std::cout << std::endl;
+            }
+            
             
             //denominator
             double Z = -1.0e99;
@@ -583,16 +529,16 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
             }
         }
         
-        /*
-        //verifying posterior
-        //std::cout <<"Checking unscaled posterior" << std::endl;
-        for (size_t aln = 0; aln < X.size(); ++aln)
-        {
-            std::cout <<  p_Hj_y[aln] << "\t" ; 
-        }
-        std::cout << std::endl;
-        */
         
+        if (verbose)
+        {
+            std::cout <<"Checking unscaled posterior" << std::endl;
+            for (size_t aln = 0; aln < X.size(); ++aln)
+            {
+                std::cout <<  p_Hj_y[aln] << "\t" ; 
+            }
+            std::cout << std::endl;
+        }
         for (size_t aln = 0; aln < X.size(); ++aln)
         {
             alnprobs[qPos][aln].rName = X[aln].rName;
@@ -619,19 +565,6 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
             
             
         }
-        /*
-        for (size_t aln = 0; aln < X.size(); ++aln)
-        {
-            qPosWithGap[aln]++;
-            // when rSize and rAlnSize is different (e.g. 123/2) Need to check.
-            if (rPos[aln] < X[aln].rStart || rPos[aln] >= X[aln].rStart + X[aln].rAlnSize
-                 || X[aln].rSeq.at(rPosWithGap[aln] - X[aln].rStart) != '-')
-            {
-                rPos[aln]++;
-            }
-            rPosWithGap[aln]++;
-        }
-        */
     }
     return alnprobs;
 }
@@ -660,7 +593,14 @@ void chooseBestPair(const std::vector<std::vector<AlignmentPair>> &readProbs, st
         }
         if(bestPair != -1) {
             bestPairs.push_back(pairs[bestPair]);
-        } else { // if every pair was NOALIGN, any one will do
+        } 
+        else if (bestProb == 0){
+           AlignmentPair noAlignPair; 
+           noAlignPair.rIndex = NOALIGN;
+           bestPairs.push_back(noAlignPair);
+        }
+        
+        else { // if every pair was NOALIGN, any one will do
             bestPairs.push_back(pairs[0]); 
             /*
             AlignmentPair e;
@@ -1443,7 +1383,7 @@ void startSplitPEProcess(const std::string readNameNoPair, std::vector<Alignment
     if (!alns1.empty())
     {
         if (verbose) std::cout << "start calcProb" << std::endl; 
-        std::vector<std::vector<AlignmentPair>> read1Probs = calcProb(alns1, alns2, params, opts);
+        std::vector<std::vector<AlignmentPair>> read1Probs = calcProb(alns1, alns2, params, opts,verbose);
         /*
         for(auto& pos:read1Probs){
             for(auto& pair:pos){
@@ -1459,7 +1399,7 @@ void startSplitPEProcess(const std::string readNameNoPair, std::vector<Alignment
     if (!alns2.empty())
     {
         if (verbose)  std::cout << "start calcProb" << std::endl; 
-        std::vector<std::vector<AlignmentPair>> read2Probs = calcProb(alns2, alns1, params, opts);
+        std::vector<std::vector<AlignmentPair>> read2Probs = calcProb(alns2, alns1, params, opts, verbose);
         chooseBestPair(read2Probs,read2FinalAln);
         if (!opts.isSamFormat) outputNative(read2FinalAln);
     }
