@@ -205,23 +205,15 @@ static Alignment readSingleAlignment(std::istream &input)
             {
                 ss >> type >> qName >> qStart >> qAlnSize >> qStrand >> qSrcSize >> qSeq;
                 //extracting pair membership info
-                std::string delim = "a";
+                std::string delim = "/";
                 size_t found = qName.find(delim);
-                if (found != std::string::npos)
+                if (found == std::string::npos)
                 {
-                    qNameNoPair = qName.substr(0, found);
-                    pairName = "1";
-                } else {
-                    std::string delim = "b";
-                    found = qName.find(delim);
-                    if (found != std::string::npos) {
-                        qNameNoPair = qName.substr(0, found);
-                        pairName = "2";
-                    } else {
-                        std::cerr << "Read names not in ReadID/1  ReadID/2 format" << std::endl;
-                        std::exit(EXIT_FAILURE);
-                    }
+                    std::cerr << "Read names not in ReadID/1  ReadID/2 format" << std::endl;
+                    std::exit(EXIT_FAILURE);
                 }
+                qNameNoPair = qName.substr(0, found);
+                pairName = qName.substr(found + delim.length());
                 //std::cout << pairName << std::endl;
                 if (pairName != "1" && pairName != "2")
                 {
@@ -564,7 +556,8 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
                     double pF = 0.0;
                     if (flag_len > 0)
                     {
-                        pF = (1.0 / opts.sdev / std::sqrt(2.0 * M_PI)) * std::exp(-pow(flag_len - opts.fraglen, 2.0) / 2.0 / pow(opts.sdev, 2.0));
+                        //pF = (1.0 / opts.sdev / std::sqrt(2.0 * M_PI)) * std::exp(-pow(flag_len - opts.fraglen, 2.0) / 2.0 / pow(opts.sdev, 2.0));
+                        pF = (1.0 / (std::sqrt(2.0 * M_PI) * opts.sdev * flag_len)) * std::exp(-pow(std::log(flag_len) - opts.fraglen, 2.0) / (2.0 * pow(opts.sdev, 2.0)));
                         log_pF = std::log(pF);
                     }
                     // p(Y_k, I=0 | H_j)
@@ -729,7 +722,7 @@ void outputInSAM(const std::string qNameNoPair,
 
 
 void writeSAMoutput(const SAMaln &readSAM,  
-                    const std::string &rnext, const long &pnext, const bool &nextSegmentUnmapped, const bool &nextSegmentRevComp, const bool &isProperPair, const std::string qName)
+                    const std::string &rnext, const long &pnext, const bool &nextSegmentUnmapped, const bool &nextSegmentRevComp, const bool &isProperPair)
 {
     // output in SAM format
     std::bitset<12> flag;
@@ -747,7 +740,7 @@ void writeSAMoutput(const SAMaln &readSAM,
     flag.set(11, readSAM.isSupplementary); // supplementary alignment
 
    
-    std::cout << qName << '\t'     // QNAME
+    std::cout << readSAM.qNameNoPair << '\t'     // QNAME
               << flag.to_ulong() << '\t' // FLAG
               << readSAM.refName << '\t'         // RNAME
               << readSAM.refStartPos << '\t'      // RPOS
@@ -1303,7 +1296,8 @@ void outputSAM(const std::string qNameNoPair, std::vector<AlignmentPair> &read1A
         if (verbose) std::cout << "Writing output" << std::endl;
         for (auto &samLine: read1SAMs)
         {
-            writeSAMoutput(samLine,rnext,pnext,nextSegmentUnmapped,nextSegmentRevComp,isProperPair, read1AlnPair[0].qName); }
+            writeSAMoutput(samLine,rnext,pnext,nextSegmentUnmapped,nextSegmentRevComp,isProperPair);
+        }
     }
     
     if (!(read2AlnPair.empty())) 
@@ -1313,7 +1307,7 @@ void outputSAM(const std::string qNameNoPair, std::vector<AlignmentPair> &read1A
         if (verbose) std::cout << "Writing output" << std::endl;
         for (auto &samLine: read2SAMs)
         {
-            writeSAMoutput(samLine,rnext,pnext,nextSegmentUnmapped,nextSegmentRevComp,isProperPair, read2AlnPair[0].qName);
+            writeSAMoutput(samLine,rnext,pnext,nextSegmentUnmapped,nextSegmentRevComp,isProperPair);
         }
     }
        
