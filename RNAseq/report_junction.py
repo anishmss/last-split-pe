@@ -46,13 +46,7 @@ while True:
         prePos = matchPos[0]
         for pos in matchPos[1:]:
             if pos-prePos > 1:
-                junction = "{}\t{}\t{}".format(refName, prePos+1, pos-1)
-                if junction not in junctionDict:
-                    junctionDict[junction] = 1
-                else:
-                    junctionDict[junctionDict] += 1
+                print("{}\t{}:{}-{}".format(samSeqName, refName, prePos, pos))
             prePos = pos
     if len(samLine) <= 1:
         break
-for junction in junctionDict.keys():
-    print junction, junctionDict[junction]
