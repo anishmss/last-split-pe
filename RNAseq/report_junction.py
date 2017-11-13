@@ -31,12 +31,18 @@ while True:
                 for i in range(length):
                     if refName not in matchDict:
                         matchDict[refName] = {}
-                    matchDict[refName][refPos] = 1
+                    matchDict[refName][refPos] = 'M'
                     refPos += 1
                     readPos += consumeDir
+            elif code == 'D':
+                for i in range(length):
+                    if refName not in matchDict:
+                        matchDict[refName] = {}
+                    matchDict[refName][refPos] = 'D'
+                    refPos += consumeDir
             elif code == 'H' or code == 'I' or code == 'S':
                 readPos += length * consumeDir
-            elif code == 'N' or code == 'D':
+            elif code == 'N':
                 refPos += length * consumeDir
         samLine = samFile.readline().rstrip().split('\t')
         if samSeqName != samLine[0]:
@@ -45,7 +51,7 @@ while True:
         matchPos = sorted(matchDict[refName].keys())
         prePos = matchPos[0]
         for pos in matchPos[1:]:
-            if pos-prePos > 1:
+            if pos-prePos > 1 and matchDict[refName][prePos] == 'M' and matchDict[refName][pos]=='M':
                 print("{}\t{}:{}-{}".format(samSeqName, refName, prePos, pos))
             prePos = pos
     if len(samLine) <= 1:
