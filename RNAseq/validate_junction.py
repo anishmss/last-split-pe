@@ -1,32 +1,53 @@
 import sys
 import re
 
-predFile = open(sys.argv[1])
-trueFile = open(sys.argv[2])
-
-none = 0
-left = 0
-right = 0
-both = 0
-for predLine in predFile:
-    pReadName, pRefName, pStart, pEnd = re.split('[\t:-]', predLine.rstrip())
-    pReadNum = int(re.search(r'(\d+)', pReadName).group(1))
-    while True:
-        trueLine = trueFile.readline().rstrip()
-        tReadName, tRefName, tStart, tEnd = re.split('[\t:-]', trueLine)
-        if tReadName == pReadName:
-            if pStart == tStart and pEnd == tEnd:
-                both += 1
-            elif pStart == tStart and pEnd != tEnd:
-                left += 1
-            elif pStart != tStart and pEnd == tEnd:
-                right += 1
-            else:
-                none += 1
-            break
+# grand truth
+trueJunctions = {}
+with open(sys.argv[2]) as f:
+    for line in f:
+        readName, refName, start, end = re.split('[\t:-]', line.rstrip())
+        info = (refName, int(start), int(end))
+        if readName in trueJunctions:
+            trueJunctions[readName].append(info)
         else:
-            tReadNum = int(re.search(r'(\d+)', tReadName).group(1))
-            if tReadNum > pReadNum:
-                none += 1
-                break
-print("Junctions Sides (none|left|right|both): {}|{}|{}|{}".format(none, left, right, both))
+            trueJunctions[readName] = [info]
+# ambiguity
+ambiguity = {}
+with open(sys.argv[3]) as f:
+    for line in f:
+        name, start, end, prefix, suffix = line.rstrip().split('\t')
+        ambiguity[(name, int(start), int(end))] = (int(prefix), int(suffix))
+
+correct = 0
+incorrect = 0
+
+with open(sys.argv[1]) as f:
+    for line in f:
+        readName, refName, start, end = re.split('[\t:-]', line.rstrip())
+        start = int(start)
+        end = int(end)
+        isCorrect = False
+        if readName in trueJunctions:
+            for info in trueJunctions[readName]:
+                if refName != info[0]:
+                    continue
+                else:
+                    trueIntronStart = info[1] + 1
+                    trueIntronEnd   = info[2] - 1
+                    intronInfo = (info[0], trueIntronStart, trueIntronEnd)
+                    if  intronInfo in ambiguity:
+                        prefixAmbiguity, suffixAmbiguity = ambiguity[intronInfo]
+                        PIS = start + 1 # predicted intron start-point
+                        PIE = end - 1 # predicted intron end-point
+                        if (PIS >= trueIntronStart - suffixAmbiguity and \
+                            PIS <= trueIntronStart + prefixAmbiguity) and \
+                           (PIE >= trueIntronEnd - suffixAmbiguity and \
+                            PIE <= trueIntronEnd + prefixAmbiguity):
+                               isCorrect = True
+                               break
+        if isCorrect:
+            correct += 1
+        else:
+            incorrect += 1
+        print(line, isCorrect)
+print("correct|incorrect = {}|{}".format(correct, incorrect))
