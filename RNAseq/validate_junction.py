@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import sys
 import re
 
@@ -50,16 +52,18 @@ with open(sys.argv[1]) as f:
                         prefixAmbiguity, suffixAmbiguity = ambiguity[intronInfo]
                         PIS = start + 1 # predicted intron start-point
                         PIE = end - 1 # predicted intron end-point
-                        if (PIS >= trueIntronStart - suffixAmbiguity and \
-                            PIS <= trueIntronStart + prefixAmbiguity) and \
-                           (PIE >= trueIntronEnd - suffixAmbiguity and \
-                            PIE <= trueIntronEnd + prefixAmbiguity):
+                        if (PIS >= trueIntronStart - suffixAmbiguity - 1 and \
+                            PIS <= trueIntronStart + prefixAmbiguity + 1) and \
+                           (PIE >= trueIntronEnd - suffixAmbiguity -1 and \
+                            PIE <= trueIntronEnd + prefixAmbiguity +1 ):
                                isCorrect = True
                                break
         if isCorrect:
             correct += 1
+            print(line.rstrip())
         else:
             incorrect += 1
+            print(line.rstrip(), file=sys.stderr)
         if isCrossed:
             crossed += 1
         else:
