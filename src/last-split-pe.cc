@@ -413,7 +413,8 @@ std::vector<std::vector<AlignmentPair>> calcProb(std::vector<Alignment> &X, std:
                 
                 //char c = X[aln].prob[rPosWithGap[aln] - X[aln].rStart]; 
                 char c = X[aln].prob[qPos2AlnCol[aln][qPos]];
-                double p = 1.0 - std::pow(10.0, -((c - 33) / 10.0)); 
+                //double p = 1.0 - std::pow(10.0, -((c - 33) / 10.0)); // ! => p = 0
+                double p = 1.0 - std::pow(10.0, -((c - 32) / 10.0)); // ! => p=0.79
                 log_p_Hj[aln] = std::log(p);
                 p_Hj_y[aln] = p ; //initialize posterior = prior.
                 p_R += p;

@@ -1445,14 +1445,17 @@ void startSplitPEProcess(const std::string readNameNoPair, std::vector<Alignment
     {
         if (verbose) std::cout << "start calcProb" << std::endl; 
         std::vector<std::vector<AlignmentPair>> read1Probs = calcProb(alns1, alns2, params, opts);
-        /*
-        for(auto& pos:read1Probs){
-            for(auto& pair:pos){
-                std::cout << pair.probability << ":" << pair.rIndex << ";\t" ; 
+        
+        if (verbose)
+        {
+            std::cout << "read1Probs"<< std::endl;
+            for(auto& pos:read1Probs){
+                for(auto& pair:pos){
+                    std::cout << pair.probability << ":" << pair.rIndex << ";\t" ; 
+                }
+                std::cout << std::endl;
             }
-            std::cout << std::endl;
         }
-        */
         chooseBestPair(read1Probs,read1FinalAln);
         if (!opts.isSamFormat) outputNative(read1FinalAln);
     }
@@ -1461,6 +1464,16 @@ void startSplitPEProcess(const std::string readNameNoPair, std::vector<Alignment
     {
         if (verbose)  std::cout << "start calcProb" << std::endl; 
         std::vector<std::vector<AlignmentPair>> read2Probs = calcProb(alns2, alns1, params, opts);
+        if (verbose)
+        {
+            std::cout << "read2Probs"<< std::endl;
+            for(auto& pos:read2Probs){
+                for(auto& pair:pos){
+                    std::cout << pair.probability << ":" << pair.rIndex << ";\t" ; 
+                }
+                std::cout << std::endl;
+            }
+        }
         chooseBestPair(read2Probs,read2FinalAln);
         if (!opts.isSamFormat) outputNative(read2FinalAln);
     }

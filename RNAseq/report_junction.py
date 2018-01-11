@@ -2,17 +2,19 @@ import sys
 import re
 
 samFile = open(sys.argv[1])
+minIntronSize = int(sys.argv[2])
 
 while True:
     samLine = samFile.readline()
     if samLine[0] != '@':
         break
 samLine = samLine.rstrip().split('\t')
-junctionDict = {}
+junctionDict = {} #???
 while True:
     matchDict = {}
-    while True:
-        samSeqName = samLine[0]
+    while True: #loop for lines of same read
+        #print samLine
+        samSeqName = samLine[0] 
         samCigar = samLine[5]
         refName = samLine[2]
         refPos = int(samLine[3])
@@ -21,9 +23,15 @@ while True:
         consumeDir = 1 if isForward else -1
         refPos = int(samLine[3])
         readLength = 0
+        
+        # why is this needed? just read in readlength?
         for match in re.findall(r"\d+[A-Z]", samCigar):
-            readLength += int(re.search(r"\d+", match).group())
+            #print match
+            #print re.search(r"\d+", match).group()
+            readLength += int(re.search(r"\d+", match).group()) # this is wrong if cigar contains D.
+        #print "readLength:",readLength
         readPos = 0 if isForward else readLength-1
+        
         for match in re.findall(r"\d+[A-Z]", samCigar):
             length = int(re.search(r"\d+", match).group())
             code = match[-1]
@@ -44,6 +52,7 @@ while True:
                 readPos += length * consumeDir
             elif code == 'N':
                 refPos += length * consumeDir
+        
         samLine = samFile.readline().rstrip().split('\t')
         if samSeqName != samLine[0]:
             break
@@ -52,7 +61,8 @@ while True:
         prePos = matchPos[0]
         for pos in matchPos[1:]:
             if pos-prePos > 1 and matchDict[refName][prePos] == 'M' and matchDict[refName][pos]=='M':
-                print("{}\t{}:{}-{}".format(samSeqName, refName, prePos, pos))
+                if pos-prePos-1 >= minIntronSize:
+                    print("{}\t{}:{}-{}".format(samSeqName, refName, prePos, pos))
             prePos = pos
     if len(samLine) <= 1:
         break

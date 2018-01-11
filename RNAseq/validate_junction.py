@@ -50,10 +50,10 @@ with open(sys.argv[1]) as f:
                         prefixAmbiguity, suffixAmbiguity = ambiguity[intronInfo]
                         PIS = start + 1 # predicted intron start-point
                         PIE = end - 1 # predicted intron end-point
-                        if (PIS >= trueIntronStart - suffixAmbiguity and \
-                            PIS <= trueIntronStart + prefixAmbiguity) and \
-                           (PIE >= trueIntronEnd - suffixAmbiguity and \
-                            PIE <= trueIntronEnd + prefixAmbiguity):
+                        if (PIS >= trueIntronStart - suffixAmbiguity - 0 and \
+                            PIS <= trueIntronStart + prefixAmbiguity + 0) and \
+                           (PIE >= trueIntronEnd - suffixAmbiguity - 0 and \
+                            PIE <= trueIntronEnd + prefixAmbiguity + 0):
                                isCorrect = True
                                break
         if isCorrect:
