@@ -39,11 +39,6 @@ with open(sys.argv[1]) as f:
                 if refName != info[0]:
                     continue
                 else:
-                    # is crossed?
-                    if start <= info[2] and end >= info[1]:
-                        r = abs(info[1]-start)
-                        l = abs(info[2]-end)
-                        isCrossed = True
                     # is edge correct?
                     trueIntronStart = info[1] + 1
                     trueIntronEnd   = info[2] - 1
@@ -52,23 +47,31 @@ with open(sys.argv[1]) as f:
                         prefixAmbiguity, suffixAmbiguity = ambiguity[intronInfo]
                         PIS = start + 1 # predicted intron start-point
                         PIE = end - 1 # predicted intron end-point
-                        if (PIS >= trueIntronStart - suffixAmbiguity - 0 and \
-                            PIS <= trueIntronStart + prefixAmbiguity + 0) and \
-                           (PIE >= trueIntronEnd - suffixAmbiguity - 0 and \
-                            PIE <= trueIntronEnd + prefixAmbiguity + 0):
+                        if (PIS >= trueIntronStart - suffixAmbiguity - 1 and \
+                            PIS <= trueIntronStart + prefixAmbiguity + 1) and \
+                           (PIE >= trueIntronEnd - suffixAmbiguity -1 and \
+                            PIE <= trueIntronEnd + prefixAmbiguity +1 ):
                                isCorrect = True
                                break
+                    # is crossed?
+                    for flexibility in [0,1,2,3,4,5]:
+                        if (PIS >= trueIntronStart - suffixAmbiguity - flexibility and \
+                            PIS <= trueIntronStart + prefixAmbiguity + flexibility) and \
+                           (PIE >= trueIntronEnd - suffixAmbiguity - flexibility and \
+                            PIE <= trueIntronEnd + prefixAmbiguity + flexibility):
+                            isCrossed = True
         if isCorrect:
             correct += 1
-            print(line.rstrip())
+            #print(line.rstrip())
         else:
             incorrect += 1
-            print(line.rstrip(), file=sys.stderr)
+            #print(line.rstrip(), file=sys.stderr)
         if isCrossed:
             crossed += 1
         else:
             notcrossed += 1
-        #if isCrossed and not isCorrect:
-        #    print("{},{},{}".format(readName, r, l))
+        if isCrossed and not isCorrect:
+            print(line.rstrip())
+            #print("{},{},{}".format(readName, r, l))
 print("precision: {}% correct|incorrect|total = {}|{}|{}".format(correct/float(correct+incorrect), correct, incorrect, (correct+incorrect)))
 print("crossed precision: {}% crossed|not crossed|total = {}|{}|{}".format(crossed/float(crossed+notcrossed), crossed, notcrossed, (crossed+notcrossed)))
