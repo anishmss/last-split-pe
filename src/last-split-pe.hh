@@ -11,8 +11,8 @@
 #include <set>
 
 struct LastPairProbsOptions {
-  bool rna;
-  bool estdist;
+  //bool rna;
+  //bool estdist;
   double mismap;
   bool isFraglen;
   double fraglen;
@@ -20,14 +20,14 @@ struct LastPairProbsOptions {
   double sdev;
   bool isDisjoint;
   double disjoint;
-  std::set<std::string> circular;
+  //std::set<std::string> circular;
   std::vector<std::string> inputFileNames;
-  double outer;
-  double inner;
-  double disjointScore;
-  double maxMissingScore1;
-  double maxMissingScore2;
-  bool isSamFormat;  
+  //double outer;
+  //double inner;
+  //double disjointScore;
+  //double maxMissingScore1;
+  //double maxMissingScore2;
+  bool isNativeFormat;  
 };
 
 void lastSplitPe(LastPairProbsOptions& opts);

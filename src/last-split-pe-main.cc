@@ -3,7 +3,7 @@
 // Copyright 2014 Toshiyuki Sato
 // Copyright 2014 Martin C. Frith
 
-// Parse the command line and run last-pair-probs.
+// Parse the command line and run last-split-pec.
 
 #include "last-split-pe.hh"
 #include "stringify.hh"
@@ -16,17 +16,17 @@
 static void run(int argc, char* argv[]) {
   LastPairProbsOptions opts;
 
-  opts.rna = false;
-  opts.estdist = false;
+  //opts.rna = false;
+  //opts.estdist = false;
   opts.mismap = 0.01;
   opts.isFraglen = false;
   opts.isSdev = false;
   opts.isDisjoint = false;
-  opts.isSamFormat = false;
+  opts.isNativeFormat = false;
 
-  const char *version = "last-split-pe "
-#include "version.hh"
-"\n";
+  //const char *version = "last-split-pe "
+//#include "version.hh"
+//"\n";
 
   std::string help = "\
 Usage:\n\
@@ -37,9 +37,7 @@ Options:\n\
   -h, --help            show this help message and exit\n\
   -f BP, --fraglen=BP   mean distance in bp\n\
   -s BP, --sdev=BP      standard deviation of distance\n\
-  --sam                 output format is SAM\n\
-  --fasta               the reads are in fasta format, not fastq \n\
-  -V, --version         show program's version number and exit\n\
+  --native              native output format\n\
 ";
 
   const char sOpts[] = "hrem:f:s:d:c:V";
@@ -48,8 +46,7 @@ Options:\n\
     { "help",     no_argument,       0, 'h' },
     { "fraglen",  required_argument, 0, 'f' },
     { "sdev",     required_argument, 0, 's' },
-    { "version",  no_argument,       0, 'V' },
-    { "sam",      no_argument,       0, 'm' },
+    { "native",      no_argument,    0, 'm' },
     { 0, 0, 0, 0}
   };
 
@@ -64,7 +61,7 @@ Options:\n\
       cbrc::unstringify(opts.fraglen, optarg);
       break;
     case 'm':
-      opts.isSamFormat = true;
+      opts.isNativeFormat = true;
       break;
     case 's':
       opts.isSdev = true;
@@ -73,9 +70,6 @@ Options:\n\
         throw std::runtime_error("option -s: should be >= 0");
       }
       break;
-    case 'V':
-      std::cout << version;
-      return;
     case '?':
       throw std::runtime_error("");
     }

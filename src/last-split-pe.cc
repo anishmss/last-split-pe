@@ -662,7 +662,7 @@ void outputInSAM(const std::string qNameNoPair,
 
 
 void writeSAMoutput(const SAMaln &readSAM,  
-                    const std::string &rnext, const long &pnext, const bool &nextSegmentUnmapped, const bool &nextSegmentRevComp, const bool &isProperPair)
+                    const std::string &rnext, const long &pnext, const bool &nextSegmentUnmapped, const bool &nextSegmentRevComp, const bool &isProperPair, LastPairProbsOptions &opts)
 {
     // output in SAM format
     std::bitset<12> flag;
@@ -679,19 +679,21 @@ void writeSAMoutput(const SAMaln &readSAM,
     flag.set(10, false);           // PCR or optical duplicate
     flag.set(11, readSAM.isSupplementary); // supplementary alignment
 
-   
-    std::cout << readSAM.qNameNoPair << '\t'     // QNAME
-              << flag.to_ulong() << '\t' // FLAG
-              << readSAM.refName << '\t'         // RNAME
-              << readSAM.refStartPos << '\t'      // RPOS
-              << static_cast<int>(-10 * std::log10(readSAM.errProb)) << '\t'             // MAPQ -10 log_10 (prob alignment is wrong)
-              //<< readSAM.bestProb << '\t' 
-              << readSAM.cigar << '\t'     // CIGAR
-              << rnext << '\t'             // RNEXT (unavailable)
-              << pnext << '\t'               // PNEXT (unavailable)
-              << readSAM.tlen << '\t'               // TLEN (unavailable)
-              << readSAM.querySeq << '\t'             // SEQ
-              << '*' << std::endl;       // QUAL (unavailable)
+    if (readSAM.errProb < opts.mismap)
+    {
+        std::cout << readSAM.qNameNoPair << '\t'     // QNAME
+                  << flag.to_ulong() << '\t' // FLAG
+                  << readSAM.refName << '\t'         // RNAME
+                  << readSAM.refStartPos << '\t'      // RPOS
+                  << static_cast<int>(-10 * std::log10(readSAM.errProb)) << '\t'             // MAPQ -10 log_10 (prob alignment is wrong)
+                  //<< readSAM.bestProb << '\t' 
+                  << readSAM.cigar << '\t'     // CIGAR
+                  << rnext << '\t'             // RNEXT (unavailable)
+                  << pnext << '\t'               // PNEXT (unavailable)
+                  << readSAM.tlen << '\t'               // TLEN (unavailable)
+                  << readSAM.querySeq << '\t'             // SEQ
+                  << '*' << std::endl;       // QUAL (unavailable)
+    }
 }
 
 void buildSAMsegmentPlus(size_t &i, const std::string &qNameNoPair, std::vector<SAMaln> &samStructVec, 
@@ -1236,7 +1238,7 @@ void outputSAM(const std::string qNameNoPair, std::vector<AlignmentPair> &read1A
         if (verbose) std::cout << "Writing output" << std::endl;
         for (auto &samLine: read1SAMs)
         {
-            writeSAMoutput(samLine,rnext,pnext,nextSegmentUnmapped,nextSegmentRevComp,isProperPair);
+            writeSAMoutput(samLine,rnext,pnext,nextSegmentUnmapped,nextSegmentRevComp,isProperPair,opts);
         }
     }
     
@@ -1247,7 +1249,7 @@ void outputSAM(const std::string qNameNoPair, std::vector<AlignmentPair> &read1A
         if (verbose) std::cout << "Writing output" << std::endl;
         for (auto &samLine: read2SAMs)
         {
-            writeSAMoutput(samLine,rnext,pnext,nextSegmentUnmapped,nextSegmentRevComp,isProperPair);
+            writeSAMoutput(samLine,rnext,pnext,nextSegmentUnmapped,nextSegmentRevComp,isProperPair,opts);
         }
     }
        
@@ -1394,7 +1396,7 @@ void startSplitPEProcess(const std::string readNameNoPair, std::vector<Alignment
         }
         */
         chooseBestPair(read1Probs,read1FinalAln);
-        if (!opts.isSamFormat) outputNative(read1FinalAln);
+        if (opts.isNativeFormat) outputNative(read1FinalAln);
     }
     
     if (!alns2.empty())
@@ -1402,10 +1404,10 @@ void startSplitPEProcess(const std::string readNameNoPair, std::vector<Alignment
         if (verbose)  std::cout << "start calcProb" << std::endl; 
         std::vector<std::vector<AlignmentPair>> read2Probs = calcProb(alns2, alns1, params, opts, verbose);
         chooseBestPair(read2Probs,read2FinalAln);
-        if (!opts.isSamFormat) outputNative(read2FinalAln);
+        if (opts.isNativeFormat) outputNative(read2FinalAln);
     }
     
-    if (opts.isSamFormat)
+    if (!opts.isNativeFormat)
     {
          
         if (verbose)  std::cout << "output SAM" << std::endl ; 
@@ -1444,10 +1446,12 @@ void lastSplitPe(LastPairProbsOptions &opts)
     std::ifstream inFile1;
     std::istream &input = (n > 0) ? cbrc::openIn(inputs[0], inFile1) : std::cin;
     AlignmentParameters params = readHeaderOrDie(input);
-
+    
+        
     std::vector<Alignment> X, Y; // X will hold alignments of read/1, and Y of read/2
 
     Alignment currentAln = readSingleAlignment(input);
+    
     if (currentAln.qName == "")
     {
         std::cerr << "Error: maf file is empty" << std::endl;
@@ -1462,6 +1466,7 @@ void lastSplitPe(LastPairProbsOptions &opts)
         }
 
         Alignment nextAln = readSingleAlignment(input);
+
         if (nextAln.qName != "")
         {  //some alignment was read
             if (currentAln.qNameNoPair == nextAln.qNameNoPair)
