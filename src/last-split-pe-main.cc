@@ -16,8 +16,7 @@
 static void run(int argc, char* argv[]) {
   LastPairProbsOptions opts;
 
-  //opts.rna = false;
-  //opts.estdist = false;
+
   opts.mismap = 0.01;
   opts.isFraglen = false;
   opts.isSdev = false;
@@ -31,22 +30,25 @@ static void run(int argc, char* argv[]) {
   std::string help = "\
 Usage:\n\
   " + std::string(argv[0]) + " --help\n\
-  " + std::string(argv[0]) + " [options] split alignment\n\
+  " + std::string(argv[0]) + " [options] maf-format-output-of-LAST-SPLIT\n\
 \n\
 Options:\n\
   -h, --help            show this help message and exit\n\
-  -f BP, --fraglen=BP   mean distance in bp\n\
-  -s BP, --sdev=BP      standard deviation of distance\n\
-  --native              native output format\n\
+  -f BP, --fraglen=BP   mean fragment length \n\
+  -s BP, --sdev=BP      standard deviation of fragment length\n\
+  -m PROB, --mismap=PROB  do not report alignments with mismap (= error probability) > PROB  \n\
+                          (default: " + cbrc::stringify(opts.mismap) + ")\n\
+  -n , --native      native output format (for testing purposes only)\n\
 ";
 
-  const char sOpts[] = "hrem:f:s:d:c:V";
+  const char sOpts[] = "hf:s:m:n";
 
   static struct option lOpts[] = {
     { "help",     no_argument,       0, 'h' },
     { "fraglen",  required_argument, 0, 'f' },
     { "sdev",     required_argument, 0, 's' },
-    { "native",      no_argument,    0, 'm' },
+    { "mismap",   required_argument, 0, 'm' },
+    { "native",   no_argument,    0, 'n' },
     { 0, 0, 0, 0}
   };
 
@@ -60,7 +62,7 @@ Options:\n\
       opts.isFraglen = true;
       cbrc::unstringify(opts.fraglen, optarg);
       break;
-    case 'm':
+    case 'n':
       opts.isNativeFormat = true;
       break;
     case 's':
@@ -69,6 +71,9 @@ Options:\n\
       if (opts.sdev < 0.0) {
         throw std::runtime_error("option -s: should be >= 0");
       }
+      break;
+    case 'm':
+      cbrc::unstringify(opts.mismap, optarg);
       break;
     case '?':
       throw std::runtime_error("");
