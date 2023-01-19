@@ -3,9 +3,10 @@ last-split-pe is a method that can split-align a short DNA read to a reference g
 
 Here's the basic idea:
 
-![Alt text](last-split-pe-graphics.png)
+![alt text](https://user-images.githubusercontent.com/101174814/213355651-7365436a-3839-4a24-b662-d36c572444bb.png)
 
-# Download and Installation
+# Download and Installation!
+
 You can download a copy of the source code from the `Downloads` link in the navigation bar, or you can clone the repository:  
 ~~~~
 git clone https://bitbucket.org/splitpairedend/last-split-pe.git
