@@ -5,7 +5,7 @@ Here's the basic idea:
 
 ![alt text](https://user-images.githubusercontent.com/101174814/213355651-7365436a-3839-4a24-b662-d36c572444bb.png)
 
-# Download and Installation!
+# Download and Installation
 
 You can download a copy of the source code from the `Downloads` link in the navigation bar, or you can clone the repository:  
 ~~~~
@@ -22,18 +22,27 @@ The worflow consists of first using LAST to compute high-scoring local alignment
 
 Suppose we have a reference genome in fasta format in the file `refGenome.fa`, and paired-end reads in two files `reads1.fastq` and `reads2.fastq`.
 
-Here are the commands:
+Here are the commands for LAST version >= 1574:
+~~~~
+lastdb -uNEAR db refGenome.fa
+lastal -2 -Q1 --split-m=0.9 --split-n --split-f=MAF+ db  reads1.fastq reads2.fastq |
+last-split-pe -f MEAN -s STD_DEV > output.sam
+~~~~
+
+MEAN and STD_DEV stand for the mean and standard deviation of the distribution of fragment (from which the read pairs are sequenced) lengths. 
+If you do not know these parameters, they can be estimated from a sample of the reads by using LAST's `last-pair-prob` as follows:
+
+~~~~
+fastq-interleave reads1.fastq reads2.fastq | head -n80000 > sample.fastq
+lastal -Q1 -D1000 -i1 db sample.fastq | last-pair-probs -e
+~~~~
+
+If you are using older versions of LAST, the first set of commands above would be:
 ~~~~
 lastdb -uNEAR db refGenome.fa
 fastq-interleave reads1.fastq reads2.fastq |
 lastal -Q1 db   | 
 last-split -m 0.9 -n -fMAF+ | last-split-pe -f MEAN -s STD_DEV > output.sam
-~~~~
-MEAN and STD_DEV stand for the mean and standard deviation of the distribution of fragment (from which the read pairs are sequenced) lengths. This can be estimated from a sample of the reads by using LAST's `last-pair-prob` as follows:
-
-~~~~
-fastq-interleave reads1.fastq reads2.fastq | head -n80000 > sample.fastq
-lastal -Q1 -D1000 -i1 db sample.fastq | last-pair-probs -e
 ~~~~
 
 ## What are all the commands doing?
@@ -44,7 +53,7 @@ lastal -Q1 -D1000 -i1 db sample.fastq | last-pair-probs -e
 
 `lastal` finds high-scoring local alignments of each read to the reference. 
 
-`last-split` computes the probability of each column of each alignment. The -m option discards local alignments with error probability more than 0.9. Decrease it to get more confident local alignments. The -n option, which is necessary, tells `last-split` not to compute a final split-alignment, as this will be handled by the next command. 
+`last-split` computes the probability of each column of each alignment. The `--split-m=0.9` option discards local alignments with error probability more than 0.9. Decrease it to get more confident local alignments. The `--split-n` option, which is necessary, tells `last-split` not to compute a final split-alignment, as this will be handled by the next command. The `--split-f=MAF+` option specifies the output format that the next command in the pipe needs.
 
 `last-split-pe` updates the column probabilities based on alignments of the paired-end mates and reports a (split-)alignment of the reads.   By default, it reports alignments of error probability less than 0.01; this can be controlled using the `-m` option. 
  
